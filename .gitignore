@@ -1,0 +1,8 @@
+# Local-only agent notes (this machine)
+AGENTS.local.md
+
+# Nix cache workaround dir (see DSH.md)
+.nix-cache/
+
+# Nix build output symlink
+result
