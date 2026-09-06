@@ -84,8 +84,17 @@ in
       cfg = config.deniac.ai.amd.strix;
 
       # The full hardware.amd-npu value for the active profile.
+      #
+      # The `profiles.${cfg.profile}` lookup is guarded: the module system
+      # forces the *structure* of the `mkIf` content even when the condition
+      # is false (pushDownProperties, via the unmatchedDefns computation), so
+      # an unguarded `profiles.null` would throw `expected a string but found
+      # null` in the inert case. Guarding it keeps the content inert-safe —
+      # nothing in `value`/`leaves` throws when `profile` is null. (The
+      # mkIf condition itself already keeps the *definition* from applying;
+      # this guard only keeps the content from throwing while it is forced.)
       value =
-      (common // profiles.${cfg.profile})
+      (common // (if cfg.profile != null then profiles.${cfg.profile} else { }))
       // {
         lemonade = common.lemonade // { user = cfg.user; };
       };
