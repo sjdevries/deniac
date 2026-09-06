@@ -1,27 +1,43 @@
-# deniac.ai.amd.strix — AMD Strix Point (64 GB) / Strix Halo (128 GB) AI stack.
+# deniac.ai.amd.strix — AMD Strix Point / Strix Halo local AI stack.
 #
-# Wraps noamsto/nix-amd-ai's NixOS module (pinned flake input) with the two
-# memory profiles its README documents:
+# Wraps noamsto/nix-amd-ai's NixOS module (pinned flake input) with two
+# explicit knobs plus the account Lemonade runs as:
 #
-#   "64gb"  — Strix Point, 64 GB unified memory. The kernel's default GTT
-#             pool (~27 GB) already covers 17-22 GB models; upstream calls
-#             the gpuMemory options a no-op here, so they stay unset.
+#   chipset — which Strix family the host is (drives `gpuTarget`):
+#             "strix-point" → gfx1150 (Ryzen AI 300, e.g. Ryzen AI 9 HX 370)
+#             "strix-halo"  → gfx1151 (Ryzen AI Max 300, e.g. AI MAX+ 395)
 #
-#   "128gb" — Strix Halo, 128 GB unified memory. Raises the GTT ceiling to
-#             96 GiB (ttm pages_limit + page_pool_size) — the pair upstream
-#             measured on a Halo host (leaves ~32 GB for CPU/OS).
+#             RAM size does NOT determine the chip family: Strix Halo ships in
+#             32 / 64 / 128 GB and Strix Point in up to 64 GB — a 64 GB board
+#             can be either.
 #
-# Both profiles enable NPU + FastFlowLM + Lemonade (OpenAI-compatible API
-# server on localhost:13305) + image generation; ROCm/Vulkan/vLLM backends
-# stay off (host can opt in). Every leaf is lib.mkDefault, so a host can
-# override any of them — at any depth:
+#   vram — the GPU-memory (GTT) ceiling sensible for AI workloads, applied as
+#          `gpuMemory.ttmSizeGiB` + `gpuMemory.pagePoolSizeGiB`:
+#             "32gb"  → 24 GiB
+#             "64gb"  → 56 GiB
+#             "128gb" → 120 GiB
+#          null (default) leaves the kernel default (~27 GB addressable,
+#          covers 17-22 GB models) untouched.
+#
+#   The two are independent axes: a 64 GB Strix Halo host sets
+#   chipset = "strix-halo" and may leave vram null (kernel default is enough
+#   for 17-22 GB models) or raise it.
+#
+# The aspect is inert (contributes nothing to `hardware.amd-npu`) until both
+# `chipset` and `user` are set.
+#
+# Every leaf it sets is `lib.mkDefault`, so a host can override any of them —
+# at any depth — including `gpuMemory.ttmSizeGiB` directly to target a
+# specific model size:
 #
 #   den.aspects.igloo.includes = [ deniac.ai.amd.strix ];
-#   den.aspects.igloo.nixos.deniac.ai.amd.strix.profile = "128gb";
-#   den.aspects.igloo.nixos.deniac.ai.amd.strix.user = "tux";
+#   den.aspects.igloo.nixos.deniac.ai.amd.strix.chipset = "strix-halo";
+#   den.aspects.igloo.nixos.deniac.ai.amd.strix.vram    = "128gb";
+#   den.aspects.igloo.nixos.deniac.ai.amd.strix.user    = "tux";
 #   # host-side overrides (all optional):
 #   den.aspects.igloo.nixos.hardware.amd-npu.enableROCm = true;
 #   den.aspects.igloo.nixos.hardware.amd-npu.lemonade.models = [ "..." ];
+#   den.aspects.igloo.nixos.hardware.amd-npu.gpuMemory.ttmSizeGiB = 80;
 
 { inputs, lib, ... }:
 let
@@ -30,7 +46,31 @@ let
   # not a module argument.
   amdNpu = inputs.nix-amd-ai.nixosModules.default;
 
-  # Leaves shared by both profiles (upstream defaults noted where relevant).
+  # Chipset axis: drives `gpuTarget` (upstream option, "The host's actual
+  # iGPU: gfx1150 (Strix Point) or gfx1151 (Strix Halo)").
+  chipsets = {
+    "strix-point" = { gpuTarget = "gfx1150"; };
+    "strix-halo" = { gpuTarget = "gfx1151"; };
+  };
+
+  # VRAM axis: the "sensible maximum for AI workloads" GTT ceiling per
+  # unified-memory size, applied as a pair (upstream requires
+  # pagePoolSizeGiB <= ttmSizeGiB; the nix-amd-ai README's measured Halo
+  # configuration sets them equal). null (option unset) leaves both at the
+  # kernel default (~27 GB addressable).
+  #
+  #   32 GB board → 24 GiB (≈ kernel default; ~8 GB left for CPU/OS)
+  #   64 GB board → 56 GiB (covers ~50 GB models; ~8 GB left for CPU/OS)
+  #   128 GB board→ 120 GiB (75 GiB+ models; OS margin gets thin — upstream
+  #                  README "GPU memory headroom" table)
+  vrams = {
+    "32gb" = { gpuMemory = { ttmSizeGiB = 24; pagePoolSizeGiB = 24; }; };
+    "64gb" = { gpuMemory = { ttmSizeGiB = 56; pagePoolSizeGiB = 56; }; };
+    "128gb" = { gpuMemory = { ttmSizeGiB = 120; pagePoolSizeGiB = 120; }; };
+  };
+
+  # Leaves shared by all configurations (upstream defaults noted where
+  # relevant).
   common = {
     enable = true;
     enableNPU = true;
@@ -51,31 +91,24 @@ let
       pruneUnlistedModels = false;
       customModels = { };
       # `user` is set from the aspect's own option (required when enabled).
-    };
-  };
-
-  profiles = {
-    "64gb" = {
-      gpuTarget = "gfx1150"; # Strix Point
-    };
-    "128gb" = {
-      gpuTarget = "gfx1151"; # Strix Halo
-      gpuMemory = {
-        ttmSizeGiB = 96;
-        pagePoolSizeGiB = 96;
-      };
+      # cacheDir (null), settings ({}), desktopApp.enable (true), and
+      # allowedOrigins ([]) are left at their upstream defaults — the host
+      # overrides them directly if it wants.
     };
   };
 in
 {
   deniac.ai.amd.strix = {
     description = ''
-      AMD Strix Point (64 GB) / Strix Halo (128 GB) local AI stack: XDNA NPU
-      driver, FastFlowLM, Lemonade OpenAI-compatible API server, and
-      image generation. Wraps noamsto/nix-amd-ai (pinned flake input).
+      AMD Strix Point / Strix Halo local AI stack: XDNA NPU driver,
+      FastFlowLM, Lemonade OpenAI-compatible API server, and image
+      generation. Wraps noamsto/nix-amd-ai (pinned flake input).
 
-      Set `profile` to "64gb" or "128gb" and `user` to the account running
-      Lemonade; leave both null to keep the aspect inert.
+      Set `chipset` to "strix-point" or "strix-halo" and `user` to the
+      account running Lemonade to activate; optionally set `vram` ("32gb" /
+      "64gb" / "128gb") to raise the GPU-memory (GTT) ceiling to the sensible
+      maximum for that memory size. Leave `chipset` null to keep the aspect
+      inert.
     '';
 
     nixos =
@@ -83,18 +116,20 @@ in
     let
       cfg = config.deniac.ai.amd.strix;
 
-      # The full hardware.amd-npu value for the active profile.
+      # The full hardware.amd-npu value for the active configuration.
       #
-      # The `profiles.${cfg.profile}` lookup is guarded: the module system
+      # The `chipsets.*` / `vrams.*` lookups are guarded: the module system
       # forces the *structure* of the `mkIf` content even when the condition
       # is false (pushDownProperties, via the unmatchedDefns computation), so
-      # an unguarded `profiles.null` would throw `expected a string but found
-      # null` in the inert case. Guarding it keeps the content inert-safe —
-      # nothing in `value`/`leaves` throws when `profile` is null. (The
-      # mkIf condition itself already keeps the *definition* from applying;
-      # this guard only keeps the content from throwing while it is forced.)
+      # an unguarded `chipsets.null` would throw in the inert case. Guarding
+      # keeps the content inert-safe — nothing in `value`/`leaves` throws
+      # when `chipset` or `vram` is null. (The mkIf condition itself already
+      # keeps the *definition* from applying; the guards only keep the
+      # content from throwing while it is forced.)
       value =
-      (common // (if cfg.profile != null then profiles.${cfg.profile} else { }))
+      common
+      // (if cfg.chipset != null then chipsets.${cfg.chipset} else { })
+      // (if cfg.vram != null then vrams.${cfg.vram} else { })
       // {
         lemonade = common.lemonade // { user = cfg.user; };
       };
@@ -120,19 +155,44 @@ in
       imports = [ amdNpu ];
 
       options.deniac.ai.amd.strix = {
-        profile = lib.mkOption {
+        chipset = lib.mkOption {
           default = null;
-          type = lib.types.nullOr (lib.types.enum [ "64gb" "128gb" ]);
+          type = lib.types.nullOr (lib.types.enum [ "strix-point" "strix-halo" ]);
           description = ''
-            Unified-memory profile for this host:
+            Which Strix family this host is (drives the upstream
+            `gpuTarget`):
 
-            - "64gb": Strix Point (64 GB) — gfx1150 target, default GTT pool
-              (the kernel default ~27 GB already covers 17-22 GB models).
-            - "128gb": Strix Halo (128 GB) — gfx1151 target, GTT ceiling
-              raised to 96 GiB via `ttm` `pages_limit`/`page_pool_size`.
+            - "strix-point": Ryzen AI 300 (e.g. Ryzen AI 9 HX 370), iGPU
+              target `gfx1150`.
+            - "strix-halo": Ryzen AI Max 300 (e.g. AI MAX+ 395), iGPU
+              target `gfx1151`.
 
-            null (default) leaves `hardware.amd-npu` disabled. Requires
-            `deniac.ai.amd.strix.user` to be set.
+            RAM size does not determine the family — Strix Halo ships in 32 /
+            64 / 128 GB and Strix Point in up to 64 GB. null (default)
+            leaves the aspect **inert** (`hardware.amd-npu` disabled); it
+            also requires `deniac.ai.amd.strix.user` to be set.
+          '';
+        };
+
+        vram = lib.mkOption {
+          default = null;
+          type = lib.types.nullOr (lib.types.enum [ "32gb" "64gb" "128gb" ]);
+          description = ''
+            GPU-memory (GTT) ceiling, sized to "the maximum that is sensible
+            for AI workloads" on a board of that unified-memory size. Sets
+            `gpuMemory.ttmSizeGiB` and `gpuMemory.pagePoolSizeGiB`
+            (upstream requires the pair to be equal-or-less):
+
+            - "32gb": 24 GiB (≈ the kernel default; ~8 GB left for CPU/OS).
+            - "64gb": 56 GiB (comfortable for ~50 GB models; ~8 GB for
+              CPU/OS).
+            - "128gb": 120 GiB (75 GiB+ models; the OS margin gets thin —
+              see the nix-amd-ai README "GPU memory headroom" table).
+
+            null (default) leaves the kernel default untouched (~27 GB
+            addressable, covers 17-22 GB models). To target a specific model
+            size, override `hardware.amd-npu.gpuMemory.ttmSizeGiB` /
+            `.pagePoolSizeGiB` directly on the host.
           '';
         };
 
@@ -143,12 +203,22 @@ in
             Local user account to run Lemonade (lemond) as. nix-amd-ai
             requires this option when Lemonade is enabled, so the aspect
             keeps the whole stack inert until it is set. The account must
-            also be in the `video` and `render` groups (see docs/ai-amd-strix.md).
+            also be in the `video` and `render` groups (see
+            docs/ai-amd-strix.md).
           '';
         };
       };
 
-      config = lib.mkIf (cfg.profile != null && cfg.user != null) {
+      # A host that sets `vram` (or `user`) without `chipset` gets a hint
+      # that the aspect is still inert — the option is accepted, just not
+      # applied.
+      warnings = lib.optional (cfg.chipset == null && (cfg.vram != null || cfg.user != null)) ''
+        deniac.ai.amd.strix.chipset is null, so the ai.amd.strix aspect is
+        inert: vram/user are set but not applied. Set chipset to
+        "strix-point" or "strix-halo" to activate.
+      '';
+
+      config = lib.mkIf (cfg.chipset != null && cfg.user != null) {
         hardware.amd-npu = leaves;
       };
     };
