@@ -41,12 +41,13 @@ den.aspects.my-host.includes = [
 ];
 
 # per-aspect options, under the aspect's own prefix
-den.aspects.my-host.nixos.deniac.ai.amd.strix.profile = "128gb";
+den.aspects.my-host.nixos.deniac.ai.amd.strix.chipset = "strix-halo";
+den.aspects.my-host.nixos.deniac.ai.amd.strix.vram    = "128gb";
 den.aspects.my-host.nixos.deniac.ai.amd.strix.user    = "tux";
 ```
 
 > Verified against this repo's pinned den input. Full usage of `ai.amd.strix`
-> — options, profiles, overrides — is in
+> — options, chipsets, VRAM sizing, overrides — is in
 > [docs/ai-amd-strix.md](docs/ai-amd-strix.md).
 
 ### The aspect model
