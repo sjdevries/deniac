@@ -209,16 +209,19 @@ in
         };
       };
 
-      # A host that sets `vram` (or `user`) without `chipset` gets a hint
-      # that the aspect is still inert — the option is accepted, just not
-      # applied.
-      warnings = lib.optional (cfg.chipset == null && (cfg.vram != null || cfg.user != null)) ''
-        deniac.ai.amd.strix.chipset is null, so the ai.amd.strix aspect is
-        inert: vram/user are set but not applied. Set chipset to
-        "strix-point" or "strix-halo" to activate.
-      '';
-
-      config = lib.mkIf (cfg.chipset != null && cfg.user != null) {
+      config =
+      {
+        # A host that sets `vram` (or `user`) without `chipset` gets a hint
+        # that the aspect is still inert — the options are accepted, just not
+        # applied. (Inside `config`: this den aspect shape does not accept a
+        # top-level `warnings` alongside `options`/`config`.)
+        warnings = lib.optional (cfg.chipset == null && (cfg.vram != null || cfg.user != null)) ''
+          deniac.ai.amd.strix.chipset is null, so the ai.amd.strix aspect is
+          inert: vram/user are set but not applied. Set chipset to
+          "strix-point" or "strix-halo" to activate.
+        '';
+      }
+      // lib.mkIf (cfg.chipset != null && cfg.user != null) {
         hardware.amd-npu = leaves;
       };
     };
