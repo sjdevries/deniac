@@ -149,6 +149,31 @@ den.aspects.igloo.nixos.hardware.amd-npu.enableROCm       = true;   # GPU backen
 den.aspects.igloo.nixos.hardware.amd-npu.lemonade.models  = [ "gpt-oss-120b" ];
 ```
 
+<aside>
+
+**Shorter form.** `den.aspects.<host>.nixos.` is den's per-host, per-class
+addressing — not removable, and not redundant. At the den level, `deniac` is a
+*value reference* (that's how `includes = [ deniac.ai.amd.strix ]` resolves);
+the `deniac.ai.amd.strix.*` options only exist inside a NixOS evaluation. The
+shortest per-host form is the function form, where the prefix appears once:
+
+```nix
+den.aspects.igloo.nixos = { ... }: {
+  deniac.ai.amd.strix.chipset = "strix-halo";
+  deniac.ai.amd.strix.vram    = "128gb";
+  deniac.ai.amd.strix.user    = "tux";
+};
+```
+
+And if the setting is host-independent, `den.default` applies it to every
+host, user, and home — dropping the host name entirely:
+
+```nix
+den.default.nixos.deniac.ai.amd.strix.chipset = "strix-halo";
+```
+
+</aside>
+
 The account in `user` must also be a member of the `video` and `render`
 groups for NPU access — the nix-amd-ai module handles the driver, but group
 membership is a host concern.
