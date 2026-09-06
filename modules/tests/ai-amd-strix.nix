@@ -91,8 +91,8 @@
           enableFastFlowLM = true;
           enableLemonade = true;
           enableImageGen = true;
-          enableROCm = false;
-          enableVulkan = false;
+          enableROCm = true;
+          enableVulkan = true;
           enableVllm = false;
           exclusiveInference = false;
           gpuTarget = "gfx1150";

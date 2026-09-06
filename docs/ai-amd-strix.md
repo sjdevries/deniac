@@ -4,7 +4,7 @@ A den aspect for AMD "Strix" APUs: **Strix Point** (Ryzen AI 300 series) and
 **Strix Halo** (Ryzen AI Max 300). It brings up the local-AI stack documented
 by the [nix-amd-ai](https://github.com/noamsto/nix-amd-ai) project, wrapped as
 a single deniac aspect with two explicit knobs — *which chip* and *how much
-VRAM* — so you can include it on a host and opt in to individual backends from
+VRAM* — so you can include it on a host and tune individual backends from
 there.
 
 When active, the aspect configures:
@@ -16,11 +16,13 @@ When active, the aspect configures:
 - optionally, the **GPU memory (GTT) ceiling** raised to the sensible maximum
   for the board's memory size (see [VRAM ceiling](#vram-ceiling)).
 
-It deliberately keeps the heavier backends — **ROCm**, **Vulkan**, and
-**vLLM** — **off** by default. A host that wants them opts in by overriding
-the relevant leaf (see [Overrides](#overrides)). The `ds4` (DeepSeek V4)
-server is also off by default: it requires a model selection a host must
-supply, and upstream marks it Strix Halo-only.
+The GPU backends — **ROCm** and **Vulkan** — are **on** by default (the
+llamacpp/sd-cpp GPU paths); a host that wants them off overrides the relevant
+leaf (see [Overrides](#overrides)). **vLLM** stays **off** by default: it is
+experimental upstream, and a host opts in with `enableVllm = true` (needs
+ROCm + Lemonade). The `ds4` (DeepSeek V4) server is also off by default: it
+requires a model selection a host must supply, and upstream marks it Strix
+Halo-only.
 
 Everything the aspect sets sits under `hardware.amd-npu` with
 `lib.mkDefault` priority, so it never wins against an explicit host definition
@@ -109,7 +111,8 @@ With the aspect active, the `hardware.amd-npu` value is:
 | `enableFastFlowLM` | `true` |
 | `enableLemonade` | `true` |
 | `enableImageGen` | `true` (sd-cpp backend, ~150 MB — upstream default) |
-| `enableROCm` / `enableVulkan` / `enableVllm` | `false` (host opt-in) |
+| `enableROCm` / `enableVulkan` | `true` (a host can opt out) |
+| `enableVllm` | `false` (host opt-in; needs ROCm + Lemonade) |
 | `exclusiveInference` | `false` |
 | `ds4.enable` | `false` (needs `ds4.model`; upstream: Strix Halo / gfx1151 only) |
 | `gpuTarget` | `gfx1150` (`strix-point`) / `gfx1151` (`strix-halo`) |
@@ -145,8 +148,8 @@ den.aspects.igloo.nixos.deniac.ai.amd.strix.vram    = "128gb";
 den.aspects.igloo.nixos.deniac.ai.amd.strix.user    = "tux";
 
 # optional host-side overrides (any leaf, at any depth):
-den.aspects.igloo.nixos.hardware.amd-npu.enableROCm       = true;   # GPU backends
-den.aspects.igloo.nixos.hardware.amd-npu.lemonade.models  = [ "gpt-oss-120b" ];
+den.aspects.igloo.nixos.hardware.amd-npu.enableROCm      = false;  # drop the ROCm backends
+den.aspects.igloo.nixos.hardware.amd-npu.lemonade.models = [ "gpt-oss-120b" ];
 ```
 
 <aside>
@@ -186,12 +189,17 @@ survives. This is why the aspect spreads its value to each leaf rather than
 `mkDefault`-ing one big attrset: overriding `lemonade.models` replaces just
 that list, not the whole `lemonade` block.
 
-To turn on a backend, override the leaf directly (it is `false` by default):
+The GPU backends are on by default; to drop one, override the leaf directly:
 
 ```nix
-den.aspects.igloo.nixos.hardware.amd-npu.enableROCm = true;  # llamacpp/sd-cpp GPU backends
-den.aspects.igloo.nixos.hardware.amd-npu.enableVulkan = true;
-den.aspects.igloo.nixos.hardware.amd-npu.enableVllm = true;  # needs ROCm + Lemonade (upstream: experimental)
+den.aspects.igloo.nixos.hardware.amd-npu.enableROCm = false;   # llamacpp/sd-cpp GPU backends
+den.aspects.igloo.nixos.hardware.amd-npu.enableVulkan = false;
+```
+
+To turn on vLLM (off by default — experimental upstream), override the leaf:
+
+```nix
+den.aspects.igloo.nixos.hardware.amd-npu.enableVllm = true;  # needs ROCm + Lemonade
 ```
 
 DeepSeek V4 server (upstream: gfx1151 / Strix Halo only, needs a model path):
@@ -260,7 +268,7 @@ as `flake.tests.ai-amd-strix`:
 | Test | Asserts |
 | --- | --- |
 | `test-namespace-export` | `deniac.ai.amd.strix` resolves to a den aspect (has a `nixos` component). |
-| `test-strix-point` | `chipset = "strix-point"` enables the stack, targets `gfx1150`, keeps backends off, leaves the GTT at the kernel default, and sets the Lemonade leaves. |
+| `test-strix-point` | `chipset = "strix-point"` enables the stack, targets `gfx1150`, enables the GPU backends (ROCm + Vulkan), leaves the GTT at the kernel default, and sets the Lemonade leaves. |
 | `test-strix-halo-128gb` | `chipset = "strix-halo"` + `vram = "128gb"` targets `gfx1151` and raises the GTT pair to 120 GiB. |
 | `test-strix-halo-64gb` | `chipset = "strix-halo"` + `vram = "64gb"` — the vram axis is independent of the chipset axis (a 64 GB Halo board) — GTT pair at 56 GiB. |
 | `test-user-required` | `chipset` + `vram` without `user` leaves the aspect inert (`enable = false`). |

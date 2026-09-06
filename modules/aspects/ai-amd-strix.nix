@@ -35,7 +35,7 @@
 #   den.aspects.igloo.nixos.deniac.ai.amd.strix.vram    = "128gb";
 #   den.aspects.igloo.nixos.deniac.ai.amd.strix.user    = "tux";
 #   # host-side overrides (all optional):
-#   den.aspects.igloo.nixos.hardware.amd-npu.enableROCm = true;
+#   den.aspects.igloo.nixos.hardware.amd-npu.enableROCm = false; # drop the ROCm backends
 #   den.aspects.igloo.nixos.hardware.amd-npu.lemonade.models = [ "..." ];
 #   den.aspects.igloo.nixos.hardware.amd-npu.gpuMemory.ttmSizeGiB = 80;
 
@@ -77,9 +77,9 @@ let
     enableFastFlowLM = true;
     enableLemonade = true;
     enableImageGen = true; # sd-cpp backend, ~150 MB — upstream default
-    enableROCm = false; # host opt-in (llamacpp/sd-cpp GPU backends)
-    enableVulkan = false; # host opt-in
-    enableVllm = false; # requires ROCm + Lemonade
+    enableROCm = true; # llamacpp/sd-cpp GPU backends — a host can opt out
+    enableVulkan = true; # llamacpp/whispercpp GPU backends — a host can opt out
+    enableVllm = false; # requires ROCm + Lemonade — a host opts in
     exclusiveInference = false;
     ds4.enable = false; # DeepSeek V4 server — needs ds4.model, host opt-in
     lemonade = {
