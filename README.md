@@ -37,14 +37,17 @@ inputs.deniac.url = "github:sjdevries/deniac";
 imports = [ (inputs.den.namespace "deniac" [ inputs.deniac ]) ];
 
 den.aspects.my-host.includes = [
-  deniac.filesystems         # disko + ZFS layout
-  deniac.state.impermanence  # …
-  deniac.gaming.steam
+  deniac.ai.amd.strix        # AMD Strix Point/Halo local-AI stack
 ];
+
+# per-aspect options, under the aspect's own prefix
+den.aspects.my-host.nixos.deniac.ai.amd.strix.profile = "128gb";
+den.aspects.my-host.nixos.deniac.ai.amd.strix.user    = "tux";
 ```
 
-> Example per the den v0.18.0 namespace guide — the shape is stable; exact names
-> and syntax will be confirmed as the first aspects land.
+> Verified against this repo's pinned den input. Full usage of `ai.amd.strix`
+> — options, profiles, overrides — is in
+> [docs/ai-amd-strix.md](docs/ai-amd-strix.md).
 
 ### The aspect model
 
@@ -72,9 +75,11 @@ Path scheme: `persistent.<domain>.<host>.<user>.<tier>.<aspect>`
 ## Status
 
 - [x] Design — aspect model, data-tier contract, public/private split
-- [ ] First aspects (starting with the software I actually use)
-- [ ] Proper den tests (`denTest`)
-- [ ] Per-aspect documentation
+- [x] First aspect — [`ai.amd.strix`](docs/ai-amd-strix.md) (AMD Strix
+      Point/Halo local-AI stack)
+- [x] Proper den tests (`denTest`) — `ai.amd.strix` suite, green under nix-unit
+- [x] Per-aspect documentation — `ai.amd.strix`
+- [ ] More aspects (the rest of the software I actually use)
 - [ ] Templates + examples
 
 ## Related
