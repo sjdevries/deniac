@@ -1,10 +1,15 @@
 # deniac.ai.amd.strix tests — runs against the pinned den + nix-amd-ai inputs.
 #
-# Each case is a `denTest`: den evals one den flake per case (a host `igloo`,
-# the aspect under test, and `expr`/`expected` compared by denTest — shallow
-# partial match when both are attrsets). The `igloo` special arg is the host's
-# evaluated NixOS config (lazy — only forced when destructured, so pure-NixOS
-# cases stay home-manager-free).
+# Each case is a `denTest`: den evals one den flake per case (a host `igloo`
+# plus the aspect under test) and yields the `{ expr, expected }` data. den's
+# CI then runs the case with nix-unit, which deep-forces `expr` and compares
+# it for deep equality with `expected` — so `expr` must be exactly the leaves
+# under test (a flat projection), never a whole submodule: deep-forcing e.g.
+# `hardware.amd-npu` wholesale would force `ds4.user` (an option with no value)
+# and throw, and a full `lemonade` subtree would carry keys `expected` lacks.
+#
+# The `igloo` special arg is the host's evaluated NixOS config (lazy — only
+# forced when destructured, so pure-NixOS cases stay home-manager-free).
 #
 # The aspect under test lives in a separate tree file
 # (`modules/aspects/ai-amd-strix.nix`), which the fresh denTest eval does NOT
@@ -17,13 +22,13 @@
 {
   flake.tests.ai-amd-strix = {
 
-    # The namespace is exported to flake.denful, so consumers can reference
-    # deniac.ai.amd.strix directly (the `deniac` module-arg comes from
-    # `config._module.args.deniac = config.den.ful.deniac`).
+    # Consumer-facing guarantee: once the `deniac` namespace is imported from
+    # `inputs.self`, `deniac.ai.amd.strix` resolves to a usable den aspect
+    # (a NixOS module under `nixos`) that a host can include. The other cases
+    # exercise it by including it; this one asserts the node shape directly.
     test-namespace-export = denTest (
       {
         inputs,
-        config,
         den,
         deniac,
         ...
@@ -33,7 +38,7 @@
         den.hosts.x86_64-linux.igloo = { };
         den.aspects.igloo.includes = [ deniac.ai.amd.strix ];
 
-        expr = config.flake.denful ? deniac;
+        expr = deniac.ai.amd.strix ? nixos;
         expected = true;
       }
     );
@@ -55,7 +60,28 @@
         den.aspects.igloo.nixos.deniac.ai.amd.strix.profile = "64gb";
         den.aspects.igloo.nixos.deniac.ai.amd.strix.user = "tux";
 
-        expr = igloo.hardware.amd-npu;
+        # Flat leaf projection: nix-unit deep-forces `expr` and compares it
+        # for deep equality with `expected`, so `expr` must be exactly the
+        # leaves under test — selecting `igloo.hardware.amd-npu` wholesale
+        # would deep-force `ds4.user` (an option with no value) and throw.
+        expr = {
+          enable = igloo.hardware.amd-npu.enable;
+          enableNPU = igloo.hardware.amd-npu.enableNPU;
+          enableFastFlowLM = igloo.hardware.amd-npu.enableFastFlowLM;
+          enableLemonade = igloo.hardware.amd-npu.enableLemonade;
+          enableImageGen = igloo.hardware.amd-npu.enableImageGen;
+          enableROCm = igloo.hardware.amd-npu.enableROCm;
+          enableVulkan = igloo.hardware.amd-npu.enableVulkan;
+          enableVllm = igloo.hardware.amd-npu.enableVllm;
+          exclusiveInference = igloo.hardware.amd-npu.exclusiveInference;
+          gpuTarget = igloo.hardware.amd-npu.gpuTarget;
+          ds4Enable = igloo.hardware.amd-npu.ds4.enable;
+          lemonadeUser = igloo.hardware.amd-npu.lemonade.user;
+          lemonadeHost = igloo.hardware.amd-npu.lemonade.host;
+          lemonadePort = igloo.hardware.amd-npu.lemonade.port;
+          lemonadeAutoStart = igloo.hardware.amd-npu.lemonade.autoStart;
+          lemonadeFlashAttn = igloo.hardware.amd-npu.lemonade.flashAttn;
+        };
         expected = {
           enable = true;
           enableNPU = true;
@@ -67,21 +93,12 @@
           enableVllm = false;
           exclusiveInference = false;
           gpuTarget = "gfx1150";
-          gpuMemory = {
-            ttmSizeGiB = null;
-            pagePoolSizeGiB = null;
-          };
-          ds4.enable = false;
-          lemonade = {
-            user = "tux";
-            host = "localhost";
-            port = 13305;
-            autoStart = true;
-            flashAttn = "on";
-            models = [ ];
-            pruneUnlistedModels = false;
-            customModels = { };
-          };
+          ds4Enable = false;
+          lemonadeUser = "tux";
+          lemonadeHost = "localhost";
+          lemonadePort = 13305;
+          lemonadeAutoStart = true;
+          lemonadeFlashAttn = "on";
         };
       }
     );
@@ -103,15 +120,21 @@
         den.aspects.igloo.nixos.deniac.ai.amd.strix.profile = "128gb";
         den.aspects.igloo.nixos.deniac.ai.amd.strix.user = "tux";
 
-        expr = igloo.hardware.amd-npu;
+        # Flat leaf projection (see test-64gb note on why not the whole
+        # submodule).
+        expr = {
+          enable = igloo.hardware.amd-npu.enable;
+          gpuTarget = igloo.hardware.amd-npu.gpuTarget;
+          gpuMemoryTtm = igloo.hardware.amd-npu.gpuMemory.ttmSizeGiB;
+          gpuMemoryPagePool = igloo.hardware.amd-npu.gpuMemory.pagePoolSizeGiB;
+          lemonadeUser = igloo.hardware.amd-npu.lemonade.user;
+        };
         expected = {
           enable = true;
           gpuTarget = "gfx1151";
-          gpuMemory = {
-            ttmSizeGiB = 96;
-            pagePoolSizeGiB = 96;
-          };
-          lemonade.user = "tux";
+          gpuMemoryTtm = 96;
+          gpuMemoryPagePool = 96;
+          lemonadeUser = "tux";
         };
       }
     );
