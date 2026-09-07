@@ -109,8 +109,9 @@
     );
 
     # chipset "strix-halo" + vram "128gb": same stack, gfx1151 target, GTT
-    # ceiling raised to the 120 GiB pair (the sensible maximum for AI
-    # workloads on a 128 GB board).
+    # ceiling raised to the 104 GiB pair (the known-stable ceiling on a
+    # 128 GB board — stutters reported past ~108 GiB; upstream's own Halo
+    # measurements ran at ttmSizeGiB = 104).
     test-strix-halo-128gb = denTest (
       {
         inputs,
@@ -139,8 +140,8 @@
         expected = {
           enable = true;
           gpuTarget = "gfx1151";
-          gpuMemoryTtm = 120;
-          gpuMemoryPagePool = 120;
+          gpuMemoryTtm = 104;
+          gpuMemoryPagePool = 104;
           lemonadeUser = "tux";
         };
       }

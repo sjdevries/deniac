@@ -72,7 +72,7 @@ It raises what is addressable, not what is consumed — no power cost.
 | `null` (default) | — (kernel default, ~27 GB addressable) | Already covers 17–22 GB models; upstream calls the pair a no-op on a 64 GB Strix Point host. |
 | `32gb` | `24` / `24` | ≈ the kernel default; ~8 GB left for CPU/OS. |
 | `64gb` | `56` / `56` | Comfortable for ~50 GB models; ~8 GB left for CPU/OS. |
-| `128gb` | `120` / `120` | 75 GiB+ models. The OS margin gets thin — upstream's measured Halo host used 96 GiB ("comfortable to ~70 GB models"), 120 is the larger row of its headroom table. |
+| `128gb` | `104` / `104` | The known-stable ceiling — Framework Desktop users report stutters/segfaults past ~108 GiB, and the nix-amd-ai README's own Halo measurements ran at `ttmSizeGiB = 104`. ~24 GiB left for CPU/OS. |
 
 Headroom rules (from the nix-amd-ai README, which measured these on a 128 GB
 Halo host):
@@ -116,7 +116,7 @@ With the aspect active, the `hardware.amd-npu` value is:
 | `exclusiveInference` | `false` |
 | `ds4.enable` | `false` (needs `ds4.model`; upstream: Strix Halo / gfx1151 only) |
 | `gpuTarget` | `gfx1150` (`strix-point`) / `gfx1151` (`strix-halo`) |
-| `gpuMemory.ttmSizeGiB` / `.pagePoolSizeGiB` | `null` (kernel default) unless `vram` is set, then `24`/`56`/`120` |
+| `gpuMemory.ttmSizeGiB` / `.pagePoolSizeGiB` | `null` (kernel default) unless `vram` is set, then `24`/`56`/`104` |
 | `lemonade.user` | the aspect's `user` option |
 | `lemonade.host` / `.port` | `localhost` / `13305` |
 | `lemonade.autoStart` | `true` |
@@ -255,9 +255,10 @@ by mistake gets a warning rather than a silent no-op.
 This aspect wraps [noamsto/nix-amd-ai](https://github.com/noamsto/nix-amd-ai),
 pinned at `7a739c04c33e9abf9a8ccd39fd81d65cebb5f449`, as a deniac aspect
 (option surface, defaults, and the GTT headroom values). The `vram` enum maps
-to the headroom table in nix-amd-ai's README ("GPU memory headroom": measured
-on a 128 GB Strix Halo host — 96 GiB general use / ~120 GiB for 75 GiB+
-models). den is pinned at
+to the headroom guidance in nix-amd-ai's README — its own 128 GB Strix Halo
+measurements (including "Running ds4 beside lemond") ran at `ttmSizeGiB = 104`,
+and Framework Desktop users report stutters/segfaults past ~108 GiB, so
+`128gb` sets the known-stable `104` GiB pair. den is pinned at
 `c7ef3f11126f24878f5c69527b4230f51c839803`.
 
 ## Tests
@@ -269,7 +270,7 @@ as `flake.tests.ai-amd-strix`:
 | --- | --- |
 | `test-namespace-export` | `deniac.ai.amd.strix` resolves to a den aspect (has a `nixos` component). |
 | `test-strix-point` | `chipset = "strix-point"` enables the stack, targets `gfx1150`, enables the GPU backends (ROCm + Vulkan), leaves the GTT at the kernel default, and sets the Lemonade leaves. |
-| `test-strix-halo-128gb` | `chipset = "strix-halo"` + `vram = "128gb"` targets `gfx1151` and raises the GTT pair to 120 GiB. |
+| `test-strix-halo-128gb` | `chipset = "strix-halo"` + `vram = "128gb"` targets `gfx1151` and raises the GTT pair to 104 GiB. |
 | `test-strix-halo-64gb` | `chipset = "strix-halo"` + `vram = "64gb"` — the vram axis is independent of the chipset axis (a 64 GB Halo board) — GTT pair at 56 GiB. |
 | `test-user-required` | `chipset` + `vram` without `user` leaves the aspect inert (`enable = false`). |
 | `test-inert-by-default` | Nothing set leaves `hardware.amd-npu` at its upstream disabled default and the aspect's options at their `null` defaults. |

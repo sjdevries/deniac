@@ -15,7 +15,7 @@
 #          `gpuMemory.ttmSizeGiB` + `gpuMemory.pagePoolSizeGiB`:
 #             "32gb"  → 24 GiB
 #             "64gb"  → 56 GiB
-#             "128gb" → 120 GiB
+#             "128gb" → 104 GiB
 #          null (default) leaves the kernel default (~27 GB addressable,
 #          covers 17-22 GB models) untouched.
 #
@@ -61,12 +61,15 @@ let
   #
   #   32 GB board → 24 GiB (≈ kernel default; ~8 GB left for CPU/OS)
   #   64 GB board → 56 GiB (covers ~50 GB models; ~8 GB left for CPU/OS)
-  #   128 GB board→ 120 GiB (75 GiB+ models; OS margin gets thin — upstream
-  #                  README "GPU memory headroom" table)
+  #   128 GB board→ 104 GiB — the known-stable ceiling: Framework Desktop
+  #                  users report stutters/segfaults past ~108 GiB, and the
+  #                  nix-amd-ai README's own Halo measurements ran at
+  #                  ttmSizeGiB = 104 ("Running ds4 beside lemond"). ~24 GB
+  #                  left for CPU/OS.
   vrams = {
     "32gb" = { gpuMemory = { ttmSizeGiB = 24; pagePoolSizeGiB = 24; }; };
     "64gb" = { gpuMemory = { ttmSizeGiB = 56; pagePoolSizeGiB = 56; }; };
-    "128gb" = { gpuMemory = { ttmSizeGiB = 120; pagePoolSizeGiB = 120; }; };
+    "128gb" = { gpuMemory = { ttmSizeGiB = 104; pagePoolSizeGiB = 104; }; };
   };
 
   # Leaves shared by all configurations (upstream defaults noted where
@@ -186,8 +189,10 @@ in
             - "32gb": 24 GiB (≈ the kernel default; ~8 GB left for CPU/OS).
             - "64gb": 56 GiB (comfortable for ~50 GB models; ~8 GB for
               CPU/OS).
-            - "128gb": 120 GiB (75 GiB+ models; the OS margin gets thin —
-              see the nix-amd-ai README "GPU memory headroom" table).
+            - "128gb": 104 GiB — the known-stable ceiling: Framework
+              Desktop users report stutters/segfaults past ~108 GiB, and the
+              nix-amd-ai README's own Halo measurements ran at this value.
+              ~24 GiB left for CPU/OS.
 
             null (default) leaves the kernel default untouched (~27 GB
             addressable, covers 17-22 GB models). To target a specific model
