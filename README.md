@@ -37,7 +37,8 @@ inputs.deniac.url = "github:sjdevries/deniac";
 imports = [ (inputs.den.namespace "deniac" [ inputs.deniac ]) ];
 
 den.aspects.my-host.includes = [
-  deniac.ai.amd.strix        # AMD Strix Point/Halo local-AI stack
+  deniac.ai.amd.strix            # AMD Strix Point/Halo local-AI stack
+  deniac.ai.halogen-flash-server # halogen inference container (Strix Halo)
 ];
 
 # per-aspect options, under the aspect's own prefix
@@ -78,8 +79,11 @@ Path scheme: `persistent.<domain>.<host>.<user>.<tier>.<aspect>`
 - [x] Design — aspect model, data-tier contract, public/private split
 - [x] First aspect — [`ai.amd.strix`](docs/ai-amd-strix.md) (AMD Strix
       Point/Halo local-AI stack)
-- [x] Proper den tests (`denTest`) — `ai.amd.strix` suite, green under nix-unit
-- [x] Per-aspect documentation — `ai.amd.strix`
+- [x] Second aspect — [`ai.halogen-flash-server`](docs/ai-halogen-flash-server.md)
+      (halogen inference container, Strix Halo only)
+- [x] Proper den tests (`denTest`) — `ai.amd.strix` and
+      `ai.halogen-flash-server` suites, green under nix-unit
+- [x] Per-aspect documentation — `ai.amd.strix`, `ai.halogen-flash-server`
 - [ ] More aspects (the rest of the software I actually use)
 - [ ] Templates + examples
 
