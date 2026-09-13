@@ -97,15 +97,24 @@ hf download peonist-ai/halogen-qwen3.8-flash-next --local-dir /var/lib/halogen-m
 
 ## Leaves the aspect sets
 
-All with `lib.mkDefault`, so a host overrides any of them with a plain
-definition:
+| Path | Value | Priority |
+| --- | --- | --- |
+| `virtualisation.podman.enable` | `true` (enables the engine + its `/etc/containers` config) | `lib.mkDefault` — a host def wins |
+| `networking.firewall.allowedTCPPorts` | `[ port ]` | plain — additive (list defs concatenate), replace with `lib.mkForce` |
+| `systemd.services.halogen-flash` | the service (below) | plain — sub-options merge per key (e.g. `enable = false` for installed-but-off-at-boot) |
+| `boot.extraModprobeConfig` | `options ttm pages_limit=…` (only when `gib` is set) | plain — additive (lines concatenate) |
 
-| Path | Value |
-| --- | --- |
-| `virtualisation.podman.enable` | `true` (enables the engine + its `/etc/containers` config) |
-| `services.firewall.allowedTCPPorts` | `[ port ]` |
-| `systemd.services.halogen-flash` | the service (below) |
-| `boot.extraModprobeConfig` | `options ttm pages_limit=…` (only when `gib` is set) |
+Why plain for three of four: on this nixpkgs, the module system drops a
+definition whose priority loses to another module's definition of the same
+option — including for list and `lines` options. Base modules
+(`podman/network-socket.nix`, `udp-over-tcp.nix`, `firewall.nix`,
+`network-interfaces.nix`) define `allowedTCPPorts` / `extraModprobeConfig`
+plainly, so a `lib.mkDefault` here would be silently filtered out and the
+port / GTT line would never reach the firewall or the kernel. Same-priority
+definitions concatenate (lists, lines) or merge per key (`attrsOf`), which
+is the composable behaviour wanted; `virtualisation.podman.enable` stays
+`lib.mkDefault` because a host that manages podman itself should win
+cleanly.
 
 The service runs **rootful podman** (`Restart = always`,
 `TimeoutStartSec = infinity`, `StateDirectory = halogen-models`) with
@@ -141,11 +150,11 @@ Adapted from the peonist-ai/halogen-flash-server README (quickstart,
 configuration, and host-settings sections), image tag `0.6.2`, retrieved
 2026-09-12. The container run line follows the upstream podman quickstart
 verbatim (rootful, `keep-groups`, memlock, ipc=host); the systemd service,
-StateDirectory, firewall, and modprobe plumbing is deniac's. A reference
-copy of the README is kept in the private sister repo's `research/` dir.
+StateDirectory, firewall, and modprobe plumbing is deniac's.
 
 ## Tests
 
 `flake.tests.ai-halogen-flash-server` (denTest, host `igloo`): namespace
 export shape; inert-by-default; enabled (podman on, service leaves,
-firewall); firewall overridability; `gib` → exact modprobe string.
+firewall); firewall merging with host ports; `gib` → the ttm modprobe line
+(non-empty lines only, order-independent).

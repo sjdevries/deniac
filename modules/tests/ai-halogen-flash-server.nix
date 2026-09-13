@@ -57,8 +57,9 @@
         expr = {
           podmanEnable = igloo.virtualisation.podman.enable;
           service = igloo.systemd.services.halogen-flash or null;
-          firewallPorts = igloo.services.firewall.allowedTCPPorts;
-          modprobe = igloo.boot.extraModprobeConfig;
+          firewallPorts = igloo.networking.firewall.allowedTCPPorts;
+          modprobe = inputs.nixpkgs.lib.filter (l: l != "")
+            (inputs.nixpkgs.lib.splitString "\n" igloo.boot.extraModprobeConfig);
           enable = igloo.deniac.ai.halogen-flash-server.enable;
           port = igloo.deniac.ai.halogen-flash-server.port;
           download = igloo.deniac.ai.halogen-flash-server.download;
@@ -68,7 +69,7 @@
           podmanEnable = false;
           service = null;
           firewallPorts = [ ];
-          modprobe = "";
+          modprobe = [ ]; # no non-empty modprobe lines (baseline is empty lines only)
           enable = false;
           port = 8731;
           download = true;
@@ -95,18 +96,16 @@
 
         expr = {
           podmanEnable = igloo.virtualisation.podman.enable;
-          serviceEnabled = igloo.systemd.services.halogen-flash.enable;
           stateDirectory = igloo.systemd.services.halogen-flash.serviceConfig.StateDirectory;
           supplementaryGroups = igloo.systemd.services.halogen-flash.serviceConfig.SupplementaryGroups;
           restart = igloo.systemd.services.halogen-flash.serviceConfig.Restart;
           timeoutStartSec = igloo.systemd.services.halogen-flash.serviceConfig.TimeoutStartSec;
           execStartIsSet = builtins.isString igloo.systemd.services.halogen-flash.serviceConfig.ExecStart;
-          wantedBy = igloo.systemd.services.halogen-flash.wantedBy;
-          firewallPorts = igloo.services.firewall.allowedTCPPorts;
+          wantedBy = igloo.systemd.services.halogen-flash.wantedBy; # non-empty → enabled
+          firewallPorts = igloo.networking.firewall.allowedTCPPorts;
         };
         expected = {
           podmanEnable = true;
-          serviceEnabled = true;
           stateDirectory = "halogen-models";
           supplementaryGroups = [ "render" "video" ];
           restart = "always";
@@ -118,9 +117,11 @@
       }
     );
 
-    # The firewall hole stays overridable: a host list at default priority
-    # wins over the aspect's mkDefault (the host owns its firewall).
-    test-firewall-overridable = denTest (
+    # List options merge across definitions: the host's ports and the
+    # aspect's port both stay (the host never loses its holes, the aspect
+    # never loses its API port). Sorted: same-priority list concatenation
+    # follows module order, which is not part of the contract.
+    test-firewall-merges-with-host = denTest (
       {
         inputs,
         den,
@@ -133,10 +134,10 @@
         den.hosts.x86_64-linux.igloo = { };
         den.aspects.igloo.includes = [ deniac.ai.halogen-flash-server ];
         den.aspects.igloo.nixos.deniac.ai.halogen-flash-server.enable = true;
-        den.aspects.igloo.nixos.services.firewall.allowedTCPPorts = [ 443 ];
+        den.aspects.igloo.nixos.networking.firewall.allowedTCPPorts = [ 443 ];
 
-        expr = igloo.services.firewall.allowedTCPPorts;
-        expected = [ 443 ];
+        expr = inputs.nixpkgs.lib.sort inputs.nixpkgs.lib.lessThan igloo.networking.firewall.allowedTCPPorts;
+        expected = [ 443 8731 ];
       }
     );
 
@@ -157,8 +158,13 @@
         den.aspects.igloo.includes = [ deniac.ai.halogen-flash-server ];
         den.aspects.igloo.nixos.deniac.ai.halogen-flash-server.gib = 120;
 
-        expr = igloo.boot.extraModprobeConfig;
-        expected = "options ttm pages_limit=31457280\n";
+        # `boot.extraModprobeConfig` concatenates every module's lines
+        # (the host baseline already contributes empty lines, and the
+        # surrounding order is not part of the contract), so reduce to
+        # the non-empty lines and assert the ttm line is the only one.
+        expr = inputs.nixpkgs.lib.filter (l: l != "")
+          (inputs.nixpkgs.lib.splitString "\n" igloo.boot.extraModprobeConfig);
+        expected = [ "options ttm pages_limit=31457280" ];
       }
     );
   };

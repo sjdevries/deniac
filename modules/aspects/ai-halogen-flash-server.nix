@@ -8,8 +8,7 @@
 #
 # Provenance: adapted from the upstream quickstart and host-settings
 # sections (github.com/peonist-ai/halogen-flash-server README, image tag
-# 0.6.2). A reference copy of that README is kept in the private sister
-# repo's research/ dir; this public repo does not link it.
+# 0.6.2).
 #
 # Usage (on a gfx1151 host):
 #
@@ -101,8 +100,10 @@
           type = lib.types.port;
           description = ''
             Host port the OpenAI-compatible API is published on. The
-            firewall hole for this port is added with `lib.mkDefault`, so
-            a host's own `services.firewall.allowedTCPPorts` wins.
+            firewall hole for this port is additive: same-priority list
+            definitions concatenate, so a host that sets
+            `networking.firewall.allowedTCPPorts` keeps its own ports and
+            gains this one (replace the whole list with `lib.mkForce`).
           '';
         };
 
@@ -208,45 +209,76 @@
         };
       };
 
+      # `lib.mkMerge`, not `//`: in this nixpkgs `lib.mkIf` yields a tagged
+      # def (`{ _type = "if"; condition; content; }`), and `//` would merge
+      # the tag FIELDS (silently dropping the first branch) instead of the
+      # branches' contents.
       config =
-        lib.mkIf cfg.enable {
-          # The podman engine + its /etc/containers configuration (CNI
-          # plugin dirs etc.) — a host that set virtualisation.podman
-          # itself wins (mkDefault).
-          virtualisation.podman.enable = lib.mkDefault true;
+        lib.mkMerge [
+          (lib.mkIf cfg.enable {
+            # The podman engine + its /etc/containers configuration (CNI
+            # plugin dirs etc.) — a host that set virtualisation.podman
+            # itself wins (mkDefault).
+            virtualisation.podman.enable = lib.mkDefault true;
 
-          services.firewall.allowedTCPPorts = lib.mkDefault [ cfg.port ];
+            # The API port, reachable from the host's network. The engine
+            # port (8730) is never published — its protocol has no
+            # authentication. Plain definition (priority 100), not
+            # mkDefault: this nixpkgs's module system drops a definition
+            # whose priority loses to another module's definition of the
+            # same option — including for list options — and base modules
+            # (podman/network-socket.nix, udp-over-tcp.nix) both define
+            # `allowedTCPPorts` plainly, so a mkDefault [ port ] here
+            # would never reach the firewall. Same-priority list defs
+            # concatenate, so the hole stays additive.
+            networking.firewall.allowedTCPPorts = [ cfg.port ];
 
-          # Rootful podman under systemd. `SupplementaryGroups` +
-          # `--group-add keep-groups` carry render/video into the
-          # container for /dev/kfd and /dev/dri.
-          systemd.services.halogen-flash = lib.mkDefault {
-            description = "halogen-flash-server — OpenAI-compatible local inference (halogen-qwen3.8-flash-next)";
-            wantedBy = [ "multi-user.target" ];
-            after = [ "local-fs.target" "network-online.target" ];
-            wants = [ "network-online.target" ];
-            serviceConfig = {
-              StateDirectory = "halogen-models";
-              SupplementaryGroups = [ "render" "video" ];
-              Restart = "always";
-              RestartSec = "10s";
-              # The first start downloads 118 GiB of weights — hours on a
-              # slow link. systemd must not time the start out.
-              TimeoutStartSec = "infinity";
-              # Clean a leftover from an unclean stop so the fixed
-              # container name does not block the next start.
-              ExecStartPre = "${podman}/bin/podman rm -f --ignore halogen-flash-server";
-              ExecStart = "${runner}/bin/halogen-flash-run";
+            # Rootful podman under systemd. `SupplementaryGroups` +
+            # `--group-add keep-groups` carry render/video into the
+            # container for /dev/kfd and /dev/dri.
+            #
+            # Plain definition (priority 100), not mkDefault: on this
+            # nixpkgs a host override of any sub-option (e.g.
+            # `systemd.services.halogen-flash.enable = false` for an
+            # installed-but-off-at-boot unit) would filter this whole
+            # mkDefault definition out, leaving a unit with no ExecStart.
+            # Same-priority attrsOf defs merge per key instead, so
+            # `enable = false` composes with the full service while a
+            # conflicting scalar override errors loudly rather than
+            # corrupting the unit.
+            systemd.services.halogen-flash = {
+              description = "halogen-flash-server — OpenAI-compatible local inference (halogen-qwen3.8-flash-next)";
+              wantedBy = [ "multi-user.target" ];
+              after = [ "local-fs.target" "network-online.target" ];
+              wants = [ "network-online.target" ];
+              serviceConfig = {
+                StateDirectory = "halogen-models";
+                SupplementaryGroups = [ "render" "video" ];
+                Restart = "always";
+                RestartSec = "10s";
+                # The first start downloads 118 GiB of weights — hours on a
+                # slow link. systemd must not time the start out.
+                TimeoutStartSec = "infinity";
+                # Clean a leftover from an unclean stop so the fixed
+                # container name does not block the next start.
+                ExecStartPre = "${podman}/bin/podman rm -f --ignore halogen-flash-server";
+                ExecStart = "${runner}/bin/halogen-flash-run";
+              };
             };
-          };
-        }
-        // lib.mkIf (cfg.gib != null) {
-          # Standalone-host GTT ceiling. Same option nix-amd-ai uses (the
-          # ttm `pages_limit` modprobe option) — see `gib` for the
-          # do-not-combine contract with ai.amd.strix.vram.
-          boot.extraModprobeConfig = lib.mkDefault
-            ("options ttm pages_limit=${toString (cfg.gib * 262144)}\n");
-        };
+          })
+          (lib.mkIf (cfg.gib != null) {
+            # Standalone-host GTT ceiling. Same option nix-amd-ai uses (the
+            # ttm `pages_limit` modprobe option) — see `gib` for the
+            # do-not-combine contract with ai.amd.strix.vram.
+            # Plain definition — same reason as the firewall hole above:
+            # base modules (firewall.nix, network-interfaces.nix) carry
+            # plain `extraModprobeConfig` definitions that would filter a
+            # mkDefault out. The lines type concatenates same-priority
+            # defs, so the host's modprobe options survive alongside.
+            boot.extraModprobeConfig =
+              "options ttm pages_limit=${toString (cfg.gib * 262144)}\n";
+          })
+        ];
     };
   };
 }
