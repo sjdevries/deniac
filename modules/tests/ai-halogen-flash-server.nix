@@ -101,6 +101,16 @@
           restart = igloo.systemd.services.halogen-flash.serviceConfig.Restart;
           timeoutStartSec = igloo.systemd.services.halogen-flash.serviceConfig.TimeoutStartSec;
           execStartIsSet = builtins.isString igloo.systemd.services.halogen-flash.serviceConfig.ExecStart;
+          # The generated runner script must mount the models dir as
+          # /models — assert the actual `-v` argument. A config-shape
+          # assertion alone lets a typo (":+/models") ship, which podman
+          # rejects at start with exit 125.
+          mountArg =
+            let
+              lib' = inputs.nixpkgs.lib;
+              script = builtins.readFile igloo.systemd.services.halogen-flash.serviceConfig.ExecStart;
+              line = lib'.findFirst (lib'.hasInfix "-v ") "" (lib'.splitString "\n" script);
+            in builtins.elemAt (builtins.match ".* -v ([^ ]+).*" line) 0;
           wantedBy = igloo.systemd.services.halogen-flash.wantedBy; # non-empty → enabled
           firewallPorts = igloo.networking.firewall.allowedTCPPorts;
         };
@@ -111,6 +121,7 @@
           restart = "always";
           timeoutStartSec = "infinity";
           execStartIsSet = true;
+          mountArg = "/var/lib/halogen-models:/models";
           wantedBy = [ "multi-user.target" ];
           firewallPorts = [ 8731 ];
         };

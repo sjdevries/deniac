@@ -66,7 +66,7 @@
           --ulimit memlock=-1:-1 \
           ${lib.optionalString cfg.download "-e HALOGEN_DOWNLOAD=${lib.escapeShellArg cfg.modelRepo}"} \
           ${lib.concatMapStringsSep " " (k: "-e ${lib.escapeShellArg (k + "=" + cfg.env."${k}")}") (lib.attrNames cfg.env)} \
-          -v ${lib.escapeShellArg (cfg.modelsDir + ":+/models" + lib.optionalString (!cfg.download) ":ro")} \
+          -v ${lib.escapeShellArg (cfg.modelsDir + ":/models" + lib.optionalString (!cfg.download) ":ro")} \
           ${lib.escapeShellArg cfg.image} \
           ${lib.concatStringsSep " " cfg.extraOptions}
       '';
