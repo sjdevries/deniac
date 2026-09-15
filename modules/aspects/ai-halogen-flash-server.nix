@@ -187,12 +187,35 @@
             measures at 124 GiB).
 
             **Do not set this on a host that also runs
-            `deniac.ai.amd.strix` with a `vram` profile** — both would
-            define the same modprobe option and the eval would fail. On
-            such hosts raise the ceiling through
+            `deniac.ai.amd.strix` with a `vram` profile.** Both write
+            `options ttm pages_limit=…` to `boot.extraModprobeConfig`,
+            which is `types.lines` — so the eval does **not** fail. The
+            two lines concatenate silently and the effective ceiling is
+            decided by module ordering you do not control.
+
+            Verified 2026-09-15 with `gib = 124` and
+            `hardware.amd-npu.gpuMemory.ttmSizeGiB = 99` both set: the
+            generated config carries **both** lines
+            (`pages_limit=25952256 page_pool_size=27262976` then
+            `pages_limit=32505856`), and **reordering the host's
+            `includes` list does not change which one lands last** — the
+            order comes from the import structure (nix-amd-ai is
+            imported at the top of the strix aspect module), not from
+            the order you write `includes` in. Scalar module params are
+            last-write-wins, so the result follows that ordering rather
+            than your intent. Treat a silent wrong-ceiling as the
+            failure mode here, not a loud error.
+
+            On such hosts raise the ceiling through
             `hardware.amd-npu.gpuMemory.ttmSizeGiB` / `.pagePoolSizeGiB`
             instead (a host-side override that wins over the profile's
             `lib.mkDefault` leaves).
+
+            The reverse case is safe by construction: on a host that does
+            **not** include `ai.amd.strix`, `hardware.amd-npu.*` is not
+            defined at all — nix-amd-ai's module arrives only via that
+            aspect's `imports` — so `gib` cannot collide there; it is the
+            only source of the option.
 
             null (default) leaves the kernel default untouched (~27 GB
             addressable — the server will not start at that ceiling).
