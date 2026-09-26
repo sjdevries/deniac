@@ -85,7 +85,7 @@
         };
 
         image = lib.mkOption {
-          default = "ghcr.io/peonist-ai/halogen-flash-server:0.6.2";
+          default = "ghcr.io/peonist-ai/halogen-flash-server:0.14.0";
           type = lib.types.str;
           description = ''
             The container image to run. The API and engine must come from
