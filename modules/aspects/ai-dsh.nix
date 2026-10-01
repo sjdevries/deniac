@@ -53,7 +53,13 @@
     { config, lib, pkgs, ... }:
     let
       cfg = config.deniac.ai.dsh;
-      yaml = lib.generators.toYAML { indent = 2; };
+      # NOTE: in this nixpkgs (26.11pre) `lib.generators.toYAML` is the
+      # stub `{ }: lib.strings.toJSON` — it takes an EMPTY attrset (passing
+      # `{ indent = … }` throws "unexpected argument 'indent'") and emits
+      # JSON. That is fine: JSON is a strict subset of YAML 1.2, and dsh's
+      # parser reads the file as YAML, so the structure is identical. Do
+      # not "fix" this by adding an indent option — the stub rejects it.
+      yaml = v: lib.generators.toYAML { } v;
     in
     {
       options.deniac.ai.dsh = {
