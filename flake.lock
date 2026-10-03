@@ -40,11 +40,11 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1791050407,
-        "narHash": "sha256-hP44fExcoDGfSxebUl138vp3I+taBJn8lPaRYVKV/Bc=",
+        "lastModified": 1791054634,
+        "narHash": "sha256-Ba7fVdlYBb9SCo2X08lpXSSUnvHxUDlzxfJf/c0WN0E=",
         "owner": "sjdevries",
         "repo": "comfyui-nix",
-        "rev": "77fe40c3f70183ce1a7eb05bab25a72cd955f452",
+        "rev": "67553bab9a56922c1a3f21b9d5047426519115c2",
         "type": "github"
       },
       "original": {
