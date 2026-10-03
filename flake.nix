@@ -11,6 +11,11 @@
     # version for this fleet. `main` has since moved to 0.2.0-rc.2, which is
     # unverified here; bump deliberately (AGENTS.md §3) after testing.
     llm-agents.url = "github:numtide/llm-agents.nix/32f95b57bd11604871fb663c6724da15112860ee";
+    # ComfyUI (node-graph image/video gen UI) — TEMPORARILY pinned to the
+    # sjdevries fork's `feat/rocm-nightly-channel` branch to test the
+    # rocmNightly wheel-channel change on real gfx1151 hardware before the
+    # upstream PR merges. Re-point to github:utensils/comfyui-nix once merged.
+    comfyui-nix.url = "github:sjdevries/comfyui-nix/feat/rocm-nightly-channel";
   };
 
   outputs = inputs: (
