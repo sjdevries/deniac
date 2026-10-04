@@ -152,11 +152,22 @@
         };
 
         modelsDir = lib.mkOption {
-          default = "/var/lib/gufo-models";
+          default = config.deniac.ai.model-store.paths.llm or "/var/lib/ai-models/llm";
           type = lib.types.str;
           description = ''
             Host directory mounted read-only as the container's `/models`
-            volume. Pre-populate it with the model files (see `model` /
+            volume.
+
+            Batteries-included (Stability-Matrix-style sharing): defaults
+            to the shared model-store's `llm` subdir
+            (`deniac.ai.model-store.paths.llm`), so when the
+            `deniac.ai.model-store` aspect is included, gufo reads from
+            the shared tree automatically — and follows a custom store
+            `root`. With no store included it falls back to the canonical
+            `/var/lib/ai-models/llm`. Override for a standalone
+            (non-shared) layout.
+
+            Pre-populate it with the model files (see `model` /
             `mtpModel` defaults for the expected layout). Unlike halogen,
             gufo has no in-container download — weights are fetched
             out-of-band (e.g. `hf download unsloth/Qwen3.8-Flash-Next-GGUF

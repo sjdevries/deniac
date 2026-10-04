@@ -102,7 +102,7 @@
           restart = "always";
           timeoutStartSec = "infinity";
           execStartIsSet = true;
-          mountArg = "/var/lib/gufo-models:/models:ro";
+          mountArg = "/var/lib/ai-models/llm:/models:ro";
           wantedBy = [ "default.target" ];
           firewallPorts = [ 8080 ];
         };
@@ -139,6 +139,49 @@
         expr = inputs.nixpkgs.lib.filter (l: l != "")
           (inputs.nixpkgs.lib.splitString "\n" igloo.boot.extraModprobeConfig);
         expected = [ "options ttm pages_limit=31457280" ];
+      }
+    );
+
+    # Batteries-included wiring: with `ai.model-store` included, gufo's
+    # modelsDir defaults to the store's derived `llm` subdir, and the
+    # runner mounts exactly that read-only — no per-consumer override.
+    test-model-store-wiring = denTest (
+      { inputs, den, deniac, igloo, ... }:
+      {
+        imports = [ (inputs.den.namespace "deniac" [ inputs.self ]) ];
+        den.hosts.x86_64-linux.igloo = { };
+        den.aspects.igloo.includes = [ deniac.ai.model-store deniac.ai.gufo ];
+        den.aspects.igloo.nixos.deniac.ai.gufo.enable = true;
+
+        expr = {
+          modelsDir = igloo.deniac.ai.gufo.modelsDir;
+          mountArg =
+            let
+              lib' = inputs.nixpkgs.lib;
+              script = builtins.readFile igloo.systemd.user.services.gufo.serviceConfig.ExecStart;
+              line = lib'.findFirst (lib'.hasInfix "-v ") "" (lib'.splitString "\n" script);
+            in builtins.elemAt (builtins.match ".* -v ([^ ]+).*" line) 0;
+        };
+        expected = {
+          modelsDir = "/var/lib/ai-models/llm";
+          mountArg = "/var/lib/ai-models/llm:/models:ro";
+        };
+      }
+    );
+
+    # The wiring reads the store OPTION, not a hardcoded path: override
+    # the store's `root` and gufo's modelsDir tracks it.
+    test-model-store-wiring-follows-custom-root = denTest (
+      { inputs, den, deniac, igloo, ... }:
+      {
+        imports = [ (inputs.den.namespace "deniac" [ inputs.self ]) ];
+        den.hosts.x86_64-linux.igloo = { };
+        den.aspects.igloo.includes = [ deniac.ai.model-store deniac.ai.gufo ];
+        den.aspects.igloo.nixos.deniac.ai.gufo.enable = true;
+        den.aspects.igloo.nixos.deniac.ai.model-store.root = "/srv/models";
+
+        expr = igloo.deniac.ai.gufo.modelsDir;
+        expected = "/srv/models/llm";
       }
     );
   };
