@@ -37,7 +37,7 @@ or a second "Medusa Halo" box as a separate AI host.)
 | `image` | `ghcr.io/gufo-org/toolboxes/gufo-runtime:latest` | Container image. Pin to `X.Y.Z` or `sha-<rev>` for reproducibility. |
 | `port` | `8080` | Host port the OpenAI-compatible API is published on. |
 | `apiPort` | `8080` | Container-side port gufo binds (`gufo serve --port`). |
-| `modelsDir` | `/var/lib/gufo-models` | Host dir mounted **read-only** as `/models`. Pre-populated; gufo does not download. |
+| `modelsDir` | `ai.model-store.paths.llm` → fallback `/var/lib/ai-models/llm` | Host dir mounted **read-only** as `/models`. Defaults to the shared [`ai.model-store`](./ai-model-store.md) `llm` subdir (batteries-included sharing); falls back to the canonical path when no store is included. Pre-populated; gufo does not download. |
 | `model` | `/models/qwen3.8-flash-next/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf` | Target GGUF (first shard; loader discovers the rest). |
 | `speculative` | `"mtp"` | `"mtp"` (shared predictor) or `"off"` (plain AR). |
 | `mtpModel` | `/models/qwen3.8-flash-next/MTP/mtp-Qwen3.8-Flash-Next-shared-Q8_0.gguf` | Shared MTP predictor (used when `speculative = "mtp"`). |
@@ -68,16 +68,35 @@ den.aspects.myhost.nixos.deniac.ai.gufo.gib = 124;
 
 Then point any OpenAI client at `http://<host>:8080/v1`.
 
+### Shared model store (batteries-included)
+
+By default `modelsDir` resolves to the shared
+[`ai.model-store`](./ai-model-store.md) `llm` subdir
+(`deniac.ai.model-store.paths.llm`), so when you include the store the
+two connect automatically — and gufo follows a custom store `root`.
+Include both and gufo reads the shared tree with no override:
+
+```nix
+den.aspects.myhost.includes = [ deniac.ai.model-store deniac.ai.gufo ];
+den.aspects.myhost.nixos.deniac.ai.gufo.enable = true;
+# modelsDir is now <store-root>/llm — nothing else to set
+```
+
+With no store included, `modelsDir` falls back to the canonical
+`/var/lib/ai-models/llm`. Override `modelsDir` for a standalone
+(non-shared) layout. The same pattern drops onto any future consumer
+(unsloth-desktop, …): each defaults to its store subdir.
+
 ### Pre-staging the weights
 
 gufo has **no in-container download** (unlike halogen). Fetch the model
-out-of-band into `modelsDir` before first start, matching the `model` /
-`mtpModel` layout:
+out-of-band into the store's `llm` dir (or your `modelsDir`) before
+first start, matching the `model` / `mtpModel` layout:
 
 ```sh
 hf download unsloth/Qwen3.8-Flash-Next-GGUF \
   --include "UD-Q4_K_XL/*" "MTP/mtp-Qwen3.8-Flash-Next-shared-Q8_0.gguf" \
-  --local-dir /var/lib/gufo-models/qwen3.8-flash-next
+  --local-dir /var/lib/ai-models/llm/qwen3.8-flash-next
 ```
 
 The `/models` mount is always read-only, so the container opens no
@@ -122,4 +141,7 @@ deniac's. Model weights are Unsloth GGUF and are not bundled.
 `flake.tests.ai-gufo` (denTest, host `igloo`): namespace export shape;
 inert-by-default; enabled (podman on, rootless user service with linger
 + `render`/`video`, **read-only** `/models` mount, firewall hole);
-firewall merging with host ports; `gib` → the ttm modprobe line.
+firewall merging with host ports; `gib` → the ttm modprobe line;
+**model-store wiring** (with `ai.model-store` included, `modelsDir`
+resolves to the store's `llm` path and the runner mounts it read-only;
+a custom store `root` propagates to gufo).
