@@ -22,7 +22,7 @@ containerised, OpenAI-compatible inference server for the
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `enable` | `false` | Start the container. Leave false to keep the aspect inert. |
-| `image` | `ghcr.io/peonist-ai/halogen-flash-server:0.6.2` | Container image. API and engine must share a tag. |
+| `image` | `ghcr.io/peonist-ai/halogen-flash-server:0.16.2` | Container image. API and engine must share a tag. |
 | `port` | `8731` | Host port the API is published on. |
 | `apiPort` | `8731` | Container-side API port (`HALOGEN_API_PORT`). |
 | `modelsDir` | `/var/lib/halogen-models` | Host dir mounted as `/models` (rw when `download`, else ro). The default path is created by systemd as the service's StateDirectory. |
@@ -147,8 +147,9 @@ on 6.18.x the driver refuses the read-only weight mappings the server needs.
 ## Provenance
 
 Adapted from the peonist-ai/halogen-flash-server README (quickstart,
-configuration, and host-settings sections), image tag `0.6.2`, retrieved
-2026-09-12. The container run line follows the upstream podman quickstart
+configuration, and host-settings sections), first at image tag `0.6.2`
+(retrieved 2026-09-12); the `image` default now tracks upstream at `0.16.2`.
+The container run line follows the upstream podman quickstart
 verbatim (rootful, `keep-groups`, memlock, ipc=host); the systemd service,
 StateDirectory, firewall, and modprobe plumbing is deniac's.
 

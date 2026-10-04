@@ -7,8 +7,8 @@
 # afterwards the container opens no outbound connections at all.
 #
 # Provenance: adapted from the upstream quickstart and host-settings
-# sections (github.com/peonist-ai/halogen-flash-server README, image tag
-# 0.6.2).
+# sections (github.com/peonist-ai/halogen-flash-server README, first at
+# image tag 0.6.2; the `image` default now tracks upstream at 0.16.2).
 #
 # Usage (on a gfx1151 host):
 #
@@ -85,7 +85,7 @@
         };
 
         image = lib.mkOption {
-          default = "ghcr.io/peonist-ai/halogen-flash-server:0.14.0";
+          default = "ghcr.io/peonist-ai/halogen-flash-server:0.16.2";
           type = lib.types.str;
           description = ''
             The container image to run. The API and engine must come from
