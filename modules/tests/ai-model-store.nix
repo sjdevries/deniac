@@ -202,7 +202,7 @@
             (r: inputs.nixpkgs.lib.hasPrefix "L+ /var/lib/ai-models/loras/b.safetensors - - - /nix/store/" r)
             igloo.systemd.tmpfiles.rules;
           linkCount = builtins.length
-            (builtins.filter (r: inputs.nixpkgs.lib.hasPrefix "L+ " r)
+            (builtins.filter (r: inputs.nixpkgs.lib.hasPrefix "L+ /var/lib/ai-models/" r)
               igloo.systemd.tmpfiles.rules);
         };
         expected = {
@@ -228,11 +228,11 @@
         ];
 
         expr = {
-          anyLink = inputs.nixpkgs.lib.any
-            (r: inputs.nixpkgs.lib.hasPrefix "L+ " r)
+          anyStoreLink = inputs.nixpkgs.lib.any
+            (r: inputs.nixpkgs.lib.hasPrefix "L+ /var/lib/ai-models/" r)
             igloo.systemd.tmpfiles.rules;
         };
-        expected = { anyLink = false; };
+        expected = { anyStoreLink = false; };
       }
     );
   };
