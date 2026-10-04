@@ -43,9 +43,9 @@ in
       service, wrapping the utensils/comfyui-nix flake (pinned input).
 
       The `rocmChannel` knob selects the ROCm wheel set when
-      `gpuSupport = "rocm"`: "rocm71" (stable) or "rocmNightly" (AMD's
-      gfx1151 nightly, for AMD GPUs ahead of the stable wheels — e.g.
-      Strix Halo / Ryzen AI MAX 395).
+      `gpuSupport = "rocm"`: "rocm71" / "rocm72" (stable) or
+      "rocmNightly" (AMD's gfx1151 nightly, for AMD GPUs ahead of the
+      stable wheels — e.g. Strix Halo / Ryzen AI MAX 395).
     '';
 
     nixos =
@@ -70,14 +70,18 @@ in
         };
 
         rocmChannel = lib.mkOption {
-          type = lib.types.enum [ "rocm71" "rocmNightly" ];
+          type = lib.types.enum [ "rocm71" "rocm72" "rocmNightly" ];
           default = "rocm71";
           description = ''
             When `gpuSupport = "rocm"`, which ROCm wheel set to use.
 
             - "rocm71" (default): the stable ROCm 7.1 wheels.
+            - "rocm72": the stable ROCm 7.2 wheels. Use this for gfx1151
+              (Strix Halo): it is the first stable whose HSA runtime
+              (Ext 1.15 + gfx11-generic ISA) runs on that iGPU — rocm71
+              SEGVs at the first kernel launch there.
             - "rocmNightly": AMD's gfx1151 nightly wheels, for AMD GPUs
-              whose ISA the stable wheels don't carry yet (Strix Halo).
+              whose ISA no stable wheel carries yet.
 
             No effect unless `gpuSupport = "rocm"`.
           '';
