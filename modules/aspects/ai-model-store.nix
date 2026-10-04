@@ -60,6 +60,16 @@
     { config, lib, pkgs, ... }:
     let
       cfg = config.deniac.ai.model-store;
+      # A declared model is a fixed-output derivation: fetched once by
+      # hash, content-addressed, and — because the store-tree symlink
+      # points at its outPath — part of the system closure (so Nix keeps
+      # it alive). `nixos-rebuild` is the download; a peer substituter
+      # can serve the bytes instead of the origin.
+      fetchModel = m:
+        pkgs.fetchurl {
+          inherit (m) url sha256;
+          name = m.name;
+        };
     in
     {
       options.deniac.ai.model-store = {
@@ -130,6 +140,41 @@
             include this aspect for the option to exist.
           '';
         };
+
+        models = lib.mkOption {
+          type = lib.types.listOf (lib.types.submodule {
+            options = {
+              name = lib.mkOption {
+                type = lib.types.str;
+                description = "Filename to link into the store subdir.";
+              };
+              subdir = lib.mkOption {
+                type = lib.types.enum cfg.subdirs;
+                description = "Which store subdir to link into.";
+              };
+              url = lib.mkOption {
+                type = lib.types.str;
+                description = "Download URL (the source's resolve URL).";
+              };
+              sha256 = lib.mkOption {
+                type = lib.types.str;
+                description = "Fixed-output checksum (nix-prefetch-url / source API).";
+              };
+            };
+          });
+          default = [ ];
+          description = ''
+            Declarative model inventory — the "StabilityMatr[n]ix"
+            registry. Each entry is fetched as a fixed-output derivation
+            and symlinked into <root>/<subdir>/<name>. Because the
+            symlink target is the derivation outPath, the model is part
+            of the system closure: nixos-rebuild IS the download, Nix
+            keeps it alive, and content-addressing dedups the same bytes
+            across every host/aspect that references them. Gated
+            (authenticated) sources are fetched via the add-time helper
+            so the secret never enters the store (see research §8.4).
+          '';
+        };
       };
 
       config =
@@ -150,7 +195,14 @@
             systemd.tmpfiles.rules =
               [ "d ${cfg.root} 0775 root ${cfg.group} - -" ]
               ++ map (s: "d ${cfg.root}/${s} 0775 root ${cfg.group} - -") cfg.subdirs
-              ++ [ "d ${cfg.hfCache} 0775 root ${cfg.group} - -" ];
+              ++ [ "d ${cfg.hfCache} 0775 root ${cfg.group} - -" ]
+              # Declarative models: symlink each fetched model into the
+              # store tree. The target is the fetchurl outPath, so the
+              # model is in the system closure (kept alive, deduped,
+              # cached). rebuild = download; a peer substituter can serve
+              # the bytes instead of the origin.
+              ++ map (m: "L+ ${cfg.root}/${m.subdir}/${m.name} - - - ${fetchModel m}")
+                cfg.models;
           })
         ];
     };
