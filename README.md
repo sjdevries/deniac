@@ -92,11 +92,14 @@ Path scheme: `persistent.<domain>.<host>.<user>.<tier>.<aspect>`
           aspect (package + `~/.dsh/settings.yaml`)
     - [`ai.unsloth`](docs/ai-unsloth.md) — Unsloth Studio consumer,
           store-wired
+    - [`ai.unsloth-desktop`](docs/ai-unsloth-desktop.md) — Unsloth
+          Desktop (native GUI app), store-integrated via `HF_HOME`
+          (Home Manager)
     - [`ai.strata`](docs/ai-strata.md) — strata inference consumer,
           store-wired
 - [x] Declarative model registry + [`deniac-model-add`](docs/deniac-model-add.md)
           helper (CivitAI/HF → model-store config entry)
-- [x] Proper den tests (`denTest`) — all eight suites, green under nix-unit
+- [x] Proper den tests (`denTest`) — all nine suites, green under nix-unit
 - [x] Per-aspect documentation — `docs/ai-*.md`
 - [ ] More aspects (the rest of the software I actually use)
 - [ ] Templates + examples
