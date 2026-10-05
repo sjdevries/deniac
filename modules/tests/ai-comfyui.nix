@@ -95,7 +95,7 @@
           enable = true;
           gpuSupport = "rocm";
           rocmChannel = "rocmNightly";
-          user = "sdevries";
+          user = "alice";
         };
 
         expr = {
@@ -104,7 +104,7 @@
         };
         expected = {
           rocmChannel = "rocmNightly";
-          user = "sdevries";
+          user = "alice";
         };
       }
     );

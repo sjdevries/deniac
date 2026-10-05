@@ -65,7 +65,7 @@ den.aspects.myhost.nixos.deniac.ai.comfyui = {
   enable = true;
   gpuSupport = "rocm";
   rocmChannel = "rocm72";   # or "rocmNightly" ahead of stable
-  user = "sdevries";
+  user = "alice";
 };
 ```
 

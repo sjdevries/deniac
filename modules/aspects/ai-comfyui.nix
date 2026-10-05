@@ -11,12 +11,12 @@
 #
 # Usage (a host running ComfyUI on a Strix Halo iGPU):
 #
-#   den.aspects.onyxia.includes = [ deniac.ai.comfyui ];
-#   den.aspects.onyxia.nixos.deniac.ai.comfyui = {
+#   den.aspects.myhost.includes = [ deniac.ai.comfyui ];
+#   den.aspects.myhost.nixos.deniac.ai.comfyui = {
 #     enable = true;
 #     gpuSupport = "rocm";
 #     rocmChannel = "rocmNightly";   # gfx1151 nightly wheels
-#     user = "sdevries";
+#     user = "alice";
 #   };
 #
 # Everything comfyui-nix offers beyond the knobs here (extraArgs,

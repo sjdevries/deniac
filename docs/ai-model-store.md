@@ -12,10 +12,11 @@ cache location. It runs **no service**. Consumers (`ai.gufo`,
 `ai.comfyui`, future engines) point their model paths into it and
 bind-mount read-only.
 
-> Full design rationale: `dotfiles-dendritic`
-> [`research/ai-model-store-sharing.md`](https://github.com/sjdevries/dotfiles-dendritic)
-> — the two-layer model (shared root + content-addressed `HF_HOME`), the
-> per-engine consumption table, and the GGUF convergence point.
+> The design rationale — the two-layer model (shared root +
+> content-addressed `HF_HOME`), the per-engine consumption table, and the
+> GGUF convergence point — is covered in this doc: see
+> [The two layers](#the-two-layers-how-sharing-actually-works) and
+> [Caveats](#caveats).
 
 ## ⚠ Tier — "precious bulk" (archive), not cache
 
@@ -121,8 +122,7 @@ manifest step is largely reading them off the cache.
 Design adapted from the Stability Matrix shared-model-root pattern and
 the per-engine model-consumption facts verified against gufo
 (`docs/SERVER.md`, `docs/CLI.md`), comfyui-nix (`COMFYUI_MODEL_PATH`),
-and the HuggingFace Hub content-addressed cache. Full rationale in
-`dotfiles-dendritic` `research/ai-model-store-sharing.md` (2026-10-04).
+and the HuggingFace Hub content-addressed cache (2026-10-04).
 
 ## Tests
 

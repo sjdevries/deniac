@@ -20,8 +20,6 @@
 # directory structure but cannot enforce the mount or the backup — that
 # is host-level.
 #
-# Design + rationale: dotfiles-dendritic `research/ai-model-store-sharing.md`.
-#
 # Usage:
 #   den.aspects.myhost.includes = [ deniac.ai.model-store ];
 #   den.aspects.myhost.nixos.deniac.ai.model-store.enable = true;
