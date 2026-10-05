@@ -90,7 +90,13 @@ Path scheme: `persistent.<domain>.<host>.<user>.<tier>.<aspect>`
           (`rocmChannel` escape hatch for new AMD GPUs)
     - [`ai.dsh`](docs/ai-dsh.md) — DeepSeek Harness, per-user Home Manager
           aspect (package + `~/.dsh/settings.yaml`)
-- [x] Proper den tests (`denTest`) — all six suites, green under nix-unit
+    - [`ai.unsloth`](docs/ai-unsloth.md) — Unsloth Studio consumer,
+          store-wired
+    - [`ai.strata`](docs/ai-strata.md) — strata inference consumer,
+          store-wired
+- [x] Declarative model registry + [`deniac-model-add`](docs/deniac-model-add.md)
+          helper (CivitAI/HF → model-store config entry)
+- [x] Proper den tests (`denTest`) — all eight suites, green under nix-unit
 - [x] Per-aspect documentation — `docs/ai-*.md`
 - [ ] More aspects (the rest of the software I actually use)
 - [ ] Templates + examples
