@@ -21,11 +21,11 @@
 # is host-level.
 #
 # Usage:
-#   den.aspects.myhost.includes = [ deniac.ai.model-store ];
-#   den.aspects.myhost.nixos.deniac.ai.model-store.enable = true;
+#   den.aspects.igloo.includes = [ deniac.ai.model-store ];
+#   den.aspects.igloo.nixos.deniac.ai.model-store.enable = true;
 #   # consumers:
-#   den.aspects.myhost.nixos.deniac.ai.gufo.modelsDir =
-#     den.aspects.myhost.nixos.deniac.ai.model-store.paths.llm;
+#   den.aspects.igloo.nixos.deniac.ai.gufo.modelsDir =
+#     den.aspects.igloo.nixos.deniac.ai.model-store.paths.llm;
 
 { lib, ... }:
 {

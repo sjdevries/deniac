@@ -48,16 +48,16 @@ host-level.
 # your den config
 imports = [ (inputs.den.namespace "deniac" [ inputs.deniac ]) ];
 
-den.aspects.myhost.includes = [ deniac.ai.model-store ];
+den.aspects.igloo.includes = [ deniac.ai.model-store ];
 
 # provision the substrate:
-den.aspects.myhost.nixos.deniac.ai.model-store.enable = true;
+den.aspects.igloo.nixos.deniac.ai.model-store.enable = true;
 
 # consumers point into it via the derived paths:
-den.aspects.myhost.nixos.deniac.ai.gufo.modelsDir =
-  den.aspects.myhost.nixos.deniac.ai.model-store.root;   # mounts whole store as /models
+den.aspects.igloo.nixos.deniac.ai.gufo.modelsDir =
+  den.aspects.igloo.nixos.deniac.ai.model-store.root;   # mounts whole store as /models
 # or a single subdir:
-#   ... = den.aspects.myhost.nixos.deniac.ai.model-store.paths.llm;
+#   ... = den.aspects.igloo.nixos.deniac.ai.model-store.paths.llm;
 ```
 
 ### ComfyUI wiring

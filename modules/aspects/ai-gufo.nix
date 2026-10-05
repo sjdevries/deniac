@@ -10,8 +10,8 @@
 # halogen-qwen3.8-flash-next box.
 #
 # Usage (on a gfx1151 host):
-#   den.aspects.myhost.includes = [ deniac.ai.gufo ];
-#   den.aspects.myhost.nixos.deniac.ai.gufo.enable = true;
+#   den.aspects.igloo.includes = [ deniac.ai.gufo ];
+#   den.aspects.igloo.nixos.deniac.ai.gufo.enable = true;
 #
 # Rootless: the container runs as `user` (default "gufo"), which the
 # aspect creates as a system user in the render/video groups with

@@ -59,8 +59,8 @@ cd /opt/strata
 ```nix
 imports = [ (inputs.den.namespace "deniac" [ inputs.deniac ]) ];
 
-den.aspects.myhost.includes = [ deniac.ai.model-store deniac.ai.strata ];
-den.aspects.myhost.nixos.deniac.ai.strata.enable = true;
+den.aspects.igloo.includes = [ deniac.ai.model-store deniac.ai.strata ];
+den.aspects.igloo.nixos.deniac.ai.strata.enable = true;
 ```
 
 The service runs `/opt/strata/run-IQ2_XS.sh --gguf-dir

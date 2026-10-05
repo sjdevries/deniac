@@ -24,9 +24,9 @@
 #
 # Usage (a user aspect that carries a homeManager class):
 #
-#   den.aspects.alice.includes = [ deniac.ai.dsh ];
-#   den.aspects.alice.homeManager.deniac.ai.dsh.enable = true;
-#   den.aspects.alice.homeManager.deniac.ai.dsh.settings = {
+#   den.aspects.tux.includes = [ deniac.ai.dsh ];
+#   den.aspects.tux.homeManager.deniac.ai.dsh.enable = true;
+#   den.aspects.tux.homeManager.deniac.ai.dsh.settings = {
 #     idle_timeout = 3600;
 #     "llm-pi-ai".providers.halogen = {
 #       api = "openai-completions";

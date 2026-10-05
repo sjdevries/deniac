@@ -58,14 +58,14 @@ set directly on the host via `services.comfyui.*`.
 ```nix
 imports = [ (inputs.den.namespace "deniac" [ inputs.deniac ]) ];
 
-den.aspects.myhost.includes = [ deniac.ai.comfyui ];
+den.aspects.igloo.includes = [ deniac.ai.comfyui ];
 
 # a host running ComfyUI on a Strix Halo iGPU:
-den.aspects.myhost.nixos.deniac.ai.comfyui = {
+den.aspects.igloo.nixos.deniac.ai.comfyui = {
   enable = true;
   gpuSupport = "rocm";
   rocmChannel = "rocm72";   # or "rocmNightly" ahead of stable
-  user = "alice";
+  user = "tux";
 };
 ```
 

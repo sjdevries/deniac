@@ -40,11 +40,11 @@ box you run **Studio**.
 imports = [ (inputs.den.namespace "deniac" [ inputs.deniac ]) ];
 
 # include the store so the HF cache is shared:
-den.aspects.myhost.includes = [ deniac.ai.model-store deniac.ai.unsloth ];
+den.aspects.igloo.includes = [ deniac.ai.model-store deniac.ai.unsloth ];
 
-den.aspects.myhost.nixos.deniac.ai.unsloth.enable = true;
+den.aspects.igloo.nixos.deniac.ai.unsloth.enable = true;
 # set the admin password from a secret (file containing KEY=VALUE):
-den.aspects.myhost.nixos.deniac.ai.unsloth.passwordFile =
+den.aspects.igloo.nixos.deniac.ai.unsloth.passwordFile =
   config.age.secrets.unsloth-studio.path;
 ```
 

@@ -33,8 +33,8 @@
 #   #    cd /opt/strata && ./setup.sh --model IQ2_XS \
 #   #        --gguf-dir /var/lib/ai-models/gguf --yes
 #   # 2. enable the service:
-#   den.aspects.myhost.includes = [ deniac.ai.model-store deniac.ai.strata ];
-#   den.aspects.myhost.nixos.deniac.ai.strata.enable = true;
+#   den.aspects.igloo.includes = [ deniac.ai.model-store deniac.ai.strata ];
+#   den.aspects.igloo.nixos.deniac.ai.strata.enable = true;
 
 { lib, ... }:
 {

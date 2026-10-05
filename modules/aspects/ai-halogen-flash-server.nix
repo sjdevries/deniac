@@ -12,8 +12,8 @@
 #
 # Usage (on a gfx1151 host):
 #
-#   den.aspects.myhost.includes = [ deniac.ai.halogen-flash-server ];
-#   den.aspects.myhost.nixos.deniac.ai.halogen-flash-server.enable = true;
+#   den.aspects.igloo.includes = [ deniac.ai.halogen-flash-server ];
+#   den.aspects.igloo.nixos.deniac.ai.halogen-flash-server.enable = true;
 #
 # The image hard-rejects every architecture but gfx1151, and the host's GTT
 # (GPU-memory) ceiling must be able to address the 118 GiB weights. On a

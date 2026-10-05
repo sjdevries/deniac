@@ -59,12 +59,12 @@ inputs.deniac.url = "github:sjdevries/deniac";
 # your den config
 imports = [ (inputs.den.namespace "deniac" [ inputs.deniac ]) ];
 
-den.aspects.myhost.includes = [ deniac.ai.gufo ];
+den.aspects.igloo.includes = [ deniac.ai.gufo ];
 
 # activate:
-den.aspects.myhost.nixos.deniac.ai.gufo.enable = true;
+den.aspects.igloo.nixos.deniac.ai.gufo.enable = true;
 # standalone host — size the GTT ceiling (skip if ai.amd.strix owns it):
-den.aspects.myhost.nixos.deniac.ai.gufo.gib = 124;
+den.aspects.igloo.nixos.deniac.ai.gufo.gib = 124;
 ```
 
 Then point any OpenAI client at `http://<host>:8080/v1`.
@@ -78,8 +78,8 @@ two connect automatically — and gufo follows a custom store `root`.
 Include both and gufo reads the shared tree with no override:
 
 ```nix
-den.aspects.myhost.includes = [ deniac.ai.model-store deniac.ai.gufo ];
-den.aspects.myhost.nixos.deniac.ai.gufo.enable = true;
+den.aspects.igloo.includes = [ deniac.ai.model-store deniac.ai.gufo ];
+den.aspects.igloo.nixos.deniac.ai.gufo.enable = true;
 # modelsDir is now <store-root>/llm — nothing else to set
 ```
 

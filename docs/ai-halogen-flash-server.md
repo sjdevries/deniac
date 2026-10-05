@@ -42,10 +42,10 @@ inputs.deniac.url = "github:sjdevries/deniac";
 # your den config
 imports = [ (inputs.den.namespace "deniac" [ inputs.deniac ]) ];
 
-den.aspects.myhost.includes = [ deniac.ai.halogen-flash-server ];
+den.aspects.igloo.includes = [ deniac.ai.halogen-flash-server ];
 
 # activate:
-den.aspects.myhost.nixos.deniac.ai.halogen-flash-server.enable = true;
+den.aspects.igloo.nixos.deniac.ai.halogen-flash-server.enable = true;
 ```
 
 Then point any OpenAI client at `http://<host>:8731/v1`. On first boot the
@@ -64,8 +64,8 @@ The 118 GiB weights must be *addressable*: the host's GTT ceiling (the `ttm`
   `lib.mkDefault` leaves:
 
   ```nix
-  den.aspects.myhost.nixos.hardware.amd-npu.gpuMemory.ttmSizeGiB = 120;
-  den.aspects.myhost.nixos.hardware.amd-npu.gpuMemory.pagePoolSizeGiB = 120;
+  den.aspects.igloo.nixos.hardware.amd-npu.gpuMemory.ttmSizeGiB = 120;
+  den.aspects.igloo.nixos.hardware.amd-npu.gpuMemory.pagePoolSizeGiB = 120;
   ```
 
   **Do not** set this aspect's `gib` on such a host — both would define the

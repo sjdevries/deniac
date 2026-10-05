@@ -54,7 +54,7 @@ $ nix run .#deniac-model-add -- https://civitai.com/api/v1/model-versions/1
 Paste that into a host:
 
 ```nix
-den.aspects.myhost.nixos.deniac.ai.model-store.models = [
+den.aspects.igloo.nixos.deniac.ai.model-store.models = [
   # CivitAI: Model / SD 1.5  (trigger: comicmay)
   { source = "civitai"; subdir = "image"; name = "superheroDiffusion_v1.ckpt";
     url = "https://civitai.com/api/download/models/1?fileId=472";

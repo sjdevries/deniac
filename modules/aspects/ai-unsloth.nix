@@ -26,9 +26,9 @@
 # without knowing the tools are reachable.
 #
 # Usage:
-#   den.aspects.myhost.includes = [ deniac.ai.model-store deniac.ai.unsloth ];
-#   den.aspects.myhost.nixos.deniac.ai.unsloth.enable = true;
-#   den.aspects.myhost.nixos.deniac.ai.unsloth.passwordFile =
+#   den.aspects.igloo.includes = [ deniac.ai.model-store deniac.ai.unsloth ];
+#   den.aspects.igloo.nixos.deniac.ai.unsloth.enable = true;
+#   den.aspects.igloo.nixos.deniac.ai.unsloth.passwordFile =
 #     config.age.secrets.unsloth-studio.path;   # file: UNSLOTH_STUDIO_PASSWORD=...
 
 { lib, ... }:
