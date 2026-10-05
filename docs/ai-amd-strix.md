@@ -253,13 +253,13 @@ by mistake gets a warning rather than a silent no-op.
 ## Provenance
 
 This aspect wraps [noamsto/nix-amd-ai](https://github.com/noamsto/nix-amd-ai),
-pinned at `7a739c04c33e9abf9a8ccd39fd81d65cebb5f449`, as a deniac aspect
+pinned at `eaa412e08c4d4e829dbc1609d75cc460dd21f3d4`, as a deniac aspect
 (option surface, defaults, and the GTT headroom values). The `vram` enum maps
 to the headroom guidance in nix-amd-ai's README — its own 128 GB Strix Halo
 measurements (including "Running ds4 beside lemond") ran at `ttmSizeGiB = 104`,
 and Framework Desktop users report stutters/segfaults past ~108 GiB, so
 `128gb` sets the known-stable `104` GiB pair. den is pinned at
-`c7ef3f11126f24878f5c69527b4230f51c839803`.
+`7594405b45e0ce2d5a418fe104a26e17f6b1dd8f`.
 
 ## Tests
 

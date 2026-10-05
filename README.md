@@ -77,13 +77,21 @@ Path scheme: `persistent.<domain>.<host>.<user>.<tier>.<aspect>`
 ## Status
 
 - [x] Design — aspect model, data-tier contract, public/private split
-- [x] First aspect — [`ai.amd.strix`](docs/ai-amd-strix.md) (AMD Strix
-      Point/Halo local-AI stack)
-- [x] Second aspect — [`ai.halogen-flash-server`](docs/ai-halogen-flash-server.md)
-      (halogen inference container, Strix Halo only)
-- [x] Proper den tests (`denTest`) — `ai.amd.strix` and
-      `ai.halogen-flash-server` suites, green under nix-unit
-- [x] Per-aspect documentation — `ai.amd.strix`, `ai.halogen-flash-server`
+- [x] Aspects shipped (each with a `denTest` suite, docs, and a usage example):
+    - [`ai.amd.strix`](docs/ai-amd-strix.md) — AMD Strix Point/Halo local-AI
+          stack (wraps nix-amd-ai)
+    - [`ai.halogen-flash-server`](docs/ai-halogen-flash-server.md) — halogen
+          inference container (Strix Halo only, rootful podman)
+    - [`ai.model-store`](docs/ai-model-store.md) — shared AI model store
+          (filesystem substrate, no service)
+    - [`ai.gufo`](docs/ai-gufo.md) — gufo
+          inference container (open counterpart, rootless podman)
+    - [`ai.comfyui`](docs/ai-comfyui.md) — ComfyUI via comfyui-nix
+          (`rocmChannel` escape hatch for new AMD GPUs)
+    - [`ai.dsh`](docs/ai-dsh.md) — DeepSeek Harness, per-user Home Manager
+          aspect (package + `~/.dsh/settings.yaml`)
+- [x] Proper den tests (`denTest`) — all six suites, green under nix-unit
+- [x] Per-aspect documentation — `docs/ai-*.md`
 - [ ] More aspects (the rest of the software I actually use)
 - [ ] Templates + examples
 

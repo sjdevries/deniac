@@ -30,6 +30,7 @@ containerised, OpenAI-compatible inference server for the
 | `modelRepo` | `peonist-ai/halogen-qwen3.8-flash-next` | Hugging Face repo `HALOGEN_DOWNLOAD` points at. |
 | `env` | `{}` | Extra container environment (e.g. `HALOGEN_MAX_TOKENS_DEFAULT`, `HALOGEN_KV_POOL_POSITIONS`, `HALOGEN_HOST_RESERVE_GIB`, `HALOGEN_CK_OVERLAY`). |
 | `gib` | `null` | GTT ceiling in GiB for **standalone** hosts (emitted as the `ttm` `pages_limit` modprobe option). See [GTT ceiling](#gtt-ceiling-gpu-memory). |
+| `memoryLow` | `null` | cgroup v2 `memory.low` for the container, as a systemd byte size (e.g. `"84G"`) — protects the mmap'd weights (accounted as reclaimable file pages) from eviction under memory pressure. Implemented by nesting the container under a declared `halogen.slice` (`podman --cgroup-parent`) with `MemoryLow` on the slice, so it survives podman's per-start random scope ids. See [Reclaim protection](#reclaim-protection-memorylow). |
 | `extraOptions` | `[]` | Extra `podman run` flags, appended verbatim (escape hatch). |
 
 ## Usage
@@ -83,6 +84,40 @@ the KV pool leaves ~8 GiB of a 124 GiB board for everything else; nix-amd-ai
 measures exactly this collision for ds4 + lemond ("give it a machine of its
 own").
 
+## Reclaim protection (`memoryLow`)
+
+The server opens the weights with `mmap`, so they are accounted as **file
+memory** (page cache) — and clean page cache is the kernel's *preferred*
+reclaim target, because re-reading it is normally cheap. For a live
+inference request it is not: a streaming workload (rsync, defrag, backups)
+can push the whole model out of RAM, and the re-fault mid-request stalls or
+kills the server. With `swap = 0` on the host the file pages are the only
+reclaimable memory, so they are exactly what goes.
+
+`memoryLow` inverts the priority: with cgroup v2 `memory.low` set, the
+kernel evicts every other cgroup first and touches this container's pages
+only when nothing else can absorb the hit. The aspect implements it by
+nesting the container under a declared **`halogen.slice`**
+(`podman --cgroup-parent=halogen.slice`, via podman's systemd cgroup
+manager) and setting `MemoryLow` on that slice — protection is inherited
+by the whole subtree. The slice is what makes it durable: podman gives every
+container a fresh random `libpod-*.scope` id on each start, so a value
+written into the scope at runtime vanishes with it, while the declared slice
+keeps the protection across every restart, reboot, and container
+recreation.
+
+Size it at or above the container's resident working set (weights + KV pool
++ runtime) with a little slack — it is a protection floor, not a
+reservation. `null` (default) leaves the container in podman's default
+`machine.slice` with no protection. A host's own `--cgroup-parent` in
+`extraOptions` overrides the managed one (last flag wins).
+
+Verify on a running host:
+
+```sh
+cat /sys/fs/cgroup/halogen.slice/memory.low   # expect the configured bytes
+```
+
 ## Model download
 
 `download = true` (default) sets `HALOGEN_DOWNLOAD` and mounts `modelsDir`
@@ -103,6 +138,7 @@ hf download peonist-ai/halogen-qwen3.8-flash-next --local-dir /var/lib/halogen-m
 | `networking.firewall.allowedTCPPorts` | `[ port ]` | plain — additive (list defs concatenate), replace with `lib.mkForce` |
 | `systemd.services.halogen-flash` | the service (below) | plain — sub-options merge per key (e.g. `enable = false` for installed-but-off-at-boot) |
 | `boot.extraModprobeConfig` | `options ttm pages_limit=…` (only when `gib` is set) | plain — additive (lines concatenate) |
+| `systemd.slices."halogen"` | `sliceConfig.MemoryLow = memoryLow` (only when `memoryLow` is set) | plain — the runner nests the container under this slice |
 
 Why plain for three of four: on this nixpkgs, the module system drops a
 definition whose priority loses to another module's definition of the same
@@ -158,4 +194,6 @@ StateDirectory, firewall, and modprobe plumbing is deniac's.
 `flake.tests.ai-halogen-flash-server` (denTest, host `igloo`): namespace
 export shape; inert-by-default; enabled (podman on, service leaves,
 firewall); firewall merging with host ports; `gib` → the ttm modprobe line
-(non-empty lines only, order-independent).
+(non-empty lines only, order-independent); **memoryLow** (set →
+`MemoryLow` on `halogen.slice` + `--cgroup-parent` in the runner; unset →
+no slice, no protection).

@@ -46,6 +46,7 @@ or a second "Medusa Halo" box as a separate AI host.)
 | `cacheDisk` | `false` | `gufo --cache-disk` restart-safe prompt cache (in the container user's home). |
 | `user` | `"gufo"` | Unprivileged service user (created: system user, `render`/`video`, linger). |
 | `gib` | `null` | GTT ceiling in GiB for **standalone** hosts (`ttm pages_limit`). |
+| `memoryLow` | `null` | cgroup v2 `memory.low` for the container, as a systemd byte size (e.g. `"32G"`) — protects the mmap'd GGUF weights (accounted as reclaimable file pages) from eviction under memory pressure. Rootless shape: the container is nested via `--cgroup-parent=gufo.slice` inside the service user's cgroup tree, with `MemoryLow` set on `systemd.user.slices."gufo"` (protection is inherited by the subtree and survives podman's per-start scope ids). |
 | `serveArgs` | `[]` | Extra `gufo serve` args, appended verbatim. |
 | `extraOptions` | `[]` | Extra `podman run` flags, appended verbatim. |
 
@@ -142,6 +143,8 @@ deniac's. Model weights are Unsloth GGUF and are not bundled.
 inert-by-default; enabled (podman on, rootless user service with linger
 + `render`/`video`, **read-only** `/models` mount, firewall hole);
 firewall merging with host ports; `gib` → the ttm modprobe line;
+**memoryLow** (set → `MemoryLow` on the user slice `gufo.slice` +
+`--cgroup-parent` in the runner; unset → no slice, no protection);
 **model-store wiring** (with `ai.model-store` included, `modelsDir`
 resolves to the store's `llm` path and the runner mounts it read-only;
 a custom store `root` propagates to gufo).
