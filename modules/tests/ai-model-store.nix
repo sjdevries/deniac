@@ -235,5 +235,42 @@
         expected = { anyStoreLink = false; };
       }
     );
+
+    # The homeManager class: the read-only path surface evaluates
+    # STANDALONE (plain evalModules — no NixOS, no home-manager), so
+    # per-user consumers in a homeManager eval can read hfCache/paths
+    # and follow a custom root. Options-only: no provisioning here.
+    test-homemanager-class = denTest (
+      { inputs, den, deniac, igloo, ... }:
+      {
+        imports = [ (inputs.den.namespace "deniac" [ inputs.self ]) ];
+        den.hosts.x86_64-linux.igloo = { };
+
+        expr =
+          let
+            lib' = inputs.nixpkgs.lib;
+            ev = lib'.evalModules {
+              modules = [
+                deniac.ai.model-store.homeManager
+                { deniac.ai.model-store.root = "/srv/models"; }
+              ];
+            };
+          in
+          {
+            hasHfCacheOption = ev.options.deniac.ai.model-store.hfCache ? _type;
+            hfFollowsRoot = ev.config.deniac.ai.model-store.hfCache;
+            llmPath = ev.config.deniac.ai.model-store.paths.llm;
+            # The hm class declares no `enable`/`models` — those are
+            # nixos-side provisioning concerns.
+            noEnableOption = !(ev.options.deniac.ai.model-store ? enable);
+          };
+        expected = {
+          hasHfCacheOption = true;
+          hfFollowsRoot = "/srv/models/.hf-cache";
+          llmPath = "/srv/models/llm";
+          noEnableOption = true;
+        };
+      }
+    );
   };
 }

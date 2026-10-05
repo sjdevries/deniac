@@ -28,6 +28,74 @@
 #     den.aspects.igloo.nixos.deniac.ai.model-store.paths.llm;
 
 { lib, ... }:
+let
+  # The read-only path surface, shared by BOTH classes. Declared in the
+  # nixos class (where provisioning lives) and in a homeManager class
+  # (options only — no provisioning), so per-user consumers evaluated in
+  # the homeManager eval (e.g. ai.unsloth-desktop) can read the store's
+  # `hfCache`/`paths` and follow a custom `root`, exactly as nixos-side
+  # consumers do. One definition, no drift between the classes.
+  pathOptions = cfg: {
+    root = lib.mkOption {
+      default = "/var/lib/ai-models";
+      type = lib.types.str;
+      description = ''
+        The shared store root. Provision this on a BACKED-UP mount
+        (archive tier) — not the hot impermanent /persist root, and
+        not tmpfs. All subdirs and the HF cache live under it.
+      '';
+    };
+
+    group = lib.mkOption {
+      default = "aimodels";
+      type = lib.types.str;
+      description = ''
+        Shared group that owns the store. Inference service users
+        (gufo, comfyui, …) join this group for read access; a
+        download helper in the group can populate it. The store dirs
+        are group-writable on the host; consumers bind-mount them
+        read-only into containers.
+      '';
+    };
+
+    hfCache = lib.mkOption {
+      default = cfg.root + "/.hf-cache";
+      type = lib.types.str;
+      description = ''
+        The shared HuggingFace cache (`HF_HOME`) — content-addressed
+        blobs, so the same weights are fetched once across every tool
+        that uses `hf download`. Defaults to a hidden dir under
+        `root` (follows a `root` override). Tools that read files by
+        path (gufo) are populated from here via hardlinks.
+      '';
+    };
+
+    subdirs = lib.mkOption {
+      default = [ "llm" "image" "video" "audio" "loras" "vae" "text_encoders" "gguf" ];
+      type = lib.types.listOf lib.types.str;
+      description = ''
+        The fixed layout convention — a superset that satisfies both
+        ComfyUI's opinionated subdir names and plain path-based
+        engines. Exposed to consumers via the derived `paths`
+        attrset.
+      '';
+    };
+
+    paths = lib.mkOption {
+      readOnly = true;
+      default = lib.listToAttrs (map
+        (s: { name = s; value = cfg.root + "/" + s; })
+        cfg.subdirs);
+      description = ''
+        Derived read-only map of subdir name → absolute path, for
+        consumers to reference instead of hardcoding (e.g.
+        `paths.llm`, `paths.image`). Resolves regardless of
+        `enable` (it is just a path computation); consumers must
+        include this aspect for the option to exist.
+      '';
+    };
+  };
+in
 {
   deniac.ai.model-store = {
     description = ''
@@ -70,72 +138,13 @@
         };
     in
     {
-      options.deniac.ai.model-store = {
+      options.deniac.ai.model-store = pathOptions cfg // {
         enable = lib.mkOption {
           default = false;
           type = lib.types.bool;
           description = ''
             Provision the shared store (group + directory tree + HF cache
             dir). Inert by default.
-          '';
-        };
-
-        root = lib.mkOption {
-          default = "/var/lib/ai-models";
-          type = lib.types.str;
-          description = ''
-            The shared store root. Provision this on a BACKED-UP mount
-            (archive tier) — not the hot impermanent /persist root, and
-            not tmpfs. All subdirs and the HF cache live under it.
-          '';
-        };
-
-        group = lib.mkOption {
-          default = "aimodels";
-          type = lib.types.str;
-          description = ''
-            Shared group that owns the store. Inference service users
-            (gufo, comfyui, …) join this group for read access; a
-            download helper in the group can populate it. The store dirs
-            are group-writable on the host; consumers bind-mount them
-            read-only into containers.
-          '';
-        };
-
-        hfCache = lib.mkOption {
-          default = cfg.root + "/.hf-cache";
-          type = lib.types.str;
-          description = ''
-            The shared HuggingFace cache (`HF_HOME`) — content-addressed
-            blobs, so the same weights are fetched once across every tool
-            that uses `hf download`. Defaults to a hidden dir under
-            `root` (follows a `root` override). Tools that read files by
-            path (gufo) are populated from here via hardlinks.
-          '';
-        };
-
-        subdirs = lib.mkOption {
-          default = [ "llm" "image" "video" "audio" "loras" "vae" "text_encoders" "gguf" ];
-          type = lib.types.listOf lib.types.str;
-          description = ''
-            The fixed layout convention — a superset that satisfies both
-            ComfyUI's opinionated subdir names and plain path-based
-            engines. Exposed to consumers via the derived `paths`
-            attrset.
-          '';
-        };
-
-        paths = lib.mkOption {
-          readOnly = true;
-          default = lib.listToAttrs (map
-            (s: { name = s; value = cfg.root + "/" + s; })
-            cfg.subdirs);
-          description = ''
-            Derived read-only map of subdir name → absolute path, for
-            consumers to reference instead of hardcoding (e.g.
-            `paths.llm`, `paths.image`). Resolves regardless of
-            `enable` (it is just a path computation); consumers must
-            include this aspect for the option to exist.
           '';
         };
 
@@ -203,6 +212,21 @@
                 cfg.models;
           })
         ];
+    };
+
+    # The homeManager class: OPTIONS ONLY — the shared read-only path
+    # surface, so per-user consumers evaluated in the user's homeManager
+    # eval (ai.unsloth-desktop) can read the store's `hfCache`/`paths`
+    # and follow a custom `root`, exactly as nixos-side consumers do.
+    # Provisioning (group, tmpfiles, model symlinks) stays nixos-side;
+    # this class configures nothing.
+    homeManager =
+    { config, lib, ... }:
+    let
+      cfg = config.deniac.ai.model-store;
+    in
+    {
+      options.deniac.ai.model-store = pathOptions cfg;
     };
   };
 }
