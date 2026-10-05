@@ -141,5 +141,99 @@
         };
       }
     );
+
+    # The registry: a declared model is fetched (fixed-output) and
+    # symlinked into the store tree. The symlink target is a /nix/store
+    # path (the fetchurl outPath). No fetch happens at eval — the
+    # outPath is computed from url + sha256.
+    test-model-fetch-and-link = denTest (
+      { inputs, den, deniac, igloo, ... }:
+      {
+        imports = [ (inputs.den.namespace "deniac" [ inputs.self ]) ];
+        den.hosts.x86_64-linux.igloo = { };
+        den.aspects.igloo.includes = [ deniac.ai.model-store ];
+        den.aspects.igloo.nixos.deniac.ai.model-store.enable = true;
+        den.aspects.igloo.nixos.deniac.ai.model-store.models = [
+          {
+            name = "foo.gguf";
+            subdir = "llm";
+            url = "https://huggingface.co/example/repo/resolve/main/foo.gguf";
+            sha256 = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+          }
+        ];
+
+        expr = {
+          linkRulePresent = inputs.nixpkgs.lib.any
+            (r: inputs.nixpkgs.lib.hasPrefix "L+ /var/lib/ai-models/llm/foo.gguf" r)
+            igloo.systemd.tmpfiles.rules;
+          linkToStore = inputs.nixpkgs.lib.any
+            (r: inputs.nixpkgs.lib.hasPrefix "L+ /var/lib/ai-models/llm/foo.gguf - - - /nix/store/" r)
+            igloo.systemd.tmpfiles.rules;
+        };
+        expected = {
+          linkRulePresent = true;
+          linkToStore = true;
+        };
+      }
+    );
+
+    # Multiple models across subdirs each get their own symlink rule.
+    test-models-multiple = denTest (
+      { inputs, den, deniac, igloo, ... }:
+      {
+        imports = [ (inputs.den.namespace "deniac" [ inputs.self ]) ];
+        den.hosts.x86_64-linux.igloo = { };
+        den.aspects.igloo.includes = [ deniac.ai.model-store ];
+        den.aspects.igloo.nixos.deniac.ai.model-store.enable = true;
+        den.aspects.igloo.nixos.deniac.ai.model-store.models = [
+          { name = "a.gguf"; subdir = "llm";
+            url = "https://example.com/a.gguf";
+            sha256 = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="; }
+          { name = "b.safetensors"; subdir = "loras";
+            url = "https://civitai.com/api/v1/model-versions/1";
+            sha256 = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="; }
+        ];
+
+        expr = {
+          llmLink = inputs.nixpkgs.lib.any
+            (r: inputs.nixpkgs.lib.hasPrefix "L+ /var/lib/ai-models/llm/a.gguf - - - /nix/store/" r)
+            igloo.systemd.tmpfiles.rules;
+          lorasLink = inputs.nixpkgs.lib.any
+            (r: inputs.nixpkgs.lib.hasPrefix "L+ /var/lib/ai-models/loras/b.safetensors - - - /nix/store/" r)
+            igloo.systemd.tmpfiles.rules;
+          linkCount = builtins.length
+            (builtins.filter (r: inputs.nixpkgs.lib.hasPrefix "L+ /var/lib/ai-models/" r)
+              igloo.systemd.tmpfiles.rules);
+        };
+        expected = {
+          llmLink = true;
+          lorasLink = true;
+          linkCount = 2;
+        };
+      }
+    );
+
+    # Models declared but the store disabled: no symlink rules — the
+    # registry only materialises when the store is enabled.
+    test-models-inert-when-store-disabled = denTest (
+      { inputs, den, deniac, igloo, ... }:
+      {
+        imports = [ (inputs.den.namespace "deniac" [ inputs.self ]) ];
+        den.hosts.x86_64-linux.igloo = { };
+        den.aspects.igloo.includes = [ deniac.ai.model-store ];
+        den.aspects.igloo.nixos.deniac.ai.model-store.models = [
+          { name = "foo.gguf"; subdir = "llm";
+            url = "https://example.com/foo.gguf";
+            sha256 = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="; }
+        ];
+
+        expr = {
+          anyStoreLink = inputs.nixpkgs.lib.any
+            (r: inputs.nixpkgs.lib.hasPrefix "L+ /var/lib/ai-models/" r)
+            igloo.systemd.tmpfiles.rules;
+        };
+        expected = { anyStoreLink = false; };
+      }
+    );
   };
 }
