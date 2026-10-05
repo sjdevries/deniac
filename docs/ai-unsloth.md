@@ -62,16 +62,22 @@ that cache. A custom store `root` propagates automatically.
 
 ## ⚠ Security
 
-Studio ships **server-side tools ON by default**. This aspect binds the
-published ports to `host`, **loopback by default**, so nothing is
-reachable off-box unless you deliberately set a routable `host`. If you
-do:
+Studio ships **server-side tools ON by default** (JupyterLab, code
+execution). This aspect binds the published ports to `host`, **loopback
+by default**, so nothing is reachable off-box unless you deliberately
+set a routable `host`. If you do:
 
 - **Set `passwordFile`** first (a real secret, not the auto-generated
-  one).
+  one). The aspect **warns at build time** when `host` is non-loopback
+  and `passwordFile` is unset — the combination would otherwise be
+  remote code execution for anyone who can reach the port. The warning
+  names the fix; it does not fail the build, so a deliberate override
+  stays possible.
 - Consider what the exposed tools (JupyterLab, code execution) mean on
   your network.
-- The firewall only opens `port`/`jupyterPort` when `host` is non-loopback.
+- The firewall only opens `port`/`jupyterPort` when `host` is
+  non-loopback (same predicate the warning uses, so the two can never
+  disagree).
 
 ## License
 
@@ -97,4 +103,7 @@ inert-by-default; enabled (podman on, rootless user service with linger
 + `render`/`video`/store-group, HF cache mounted at the container's
 cache path, loopback → no firewall hole); model-store wiring (HF cache
 follows the store `hfCache`, custom root propagates, store-group
-membership); firewall opens both ports when bound beyond loopback.
+membership); firewall opens both ports when bound beyond loopback;
+**safety warning** (exposed without `passwordFile` → build-time warning
+naming the fix; exposed *with* `passwordFile` → silent; loopback →
+silent).

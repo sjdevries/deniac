@@ -56,6 +56,10 @@
     let
       cfg = config.deniac.ai.unsloth;
       podman = config.virtualisation.podman.package;
+      # Single predicate for "this bind is reachable beyond the box".
+      # Shared by the firewall hole and the safety warning so the two can
+      # never disagree about what counts as exposed.
+      isLoopback = cfg.host == "127.0.0.1" || cfg.host == "localhost";
       # The shared store group (follows the store's `group` if included,
       # else the canonical `aimodels`). The service user joins it so the
       # mounted HF cache is read-write.
@@ -171,6 +175,22 @@
 
       config =
         lib.mkMerge [
+          {
+            # Safety net for the "exposed without a password" footgun.
+            # Studio ships server-side tools ON by default (JupyterLab,
+            # code execution), so a routable bind with no `passwordFile`
+            # means anyone who can reach the port can run code on this
+            # box. The aspect cannot enforce the secret (only the host
+            # knows where it lives), but it refuses to let the
+            # combination pass silently: the build prints a loud warning
+            # naming the fix. (Inside `config` — this den aspect shape
+            # does not accept a top-level `warnings`.)
+            warnings = lib.optionals (cfg.enable && !isLoopback && cfg.passwordFile == null) [
+              ''
+                deniac.ai.unsloth: Studio is exposed on ${cfg.host}:${toString cfg.port} (JupyterLab on ${toString cfg.jupyterPort}) with NO passwordFile set — the server-side tools (JupyterLab, code execution) are ON by default, so this is remote code execution for anyone who can reach the port. Set `deniac.ai.unsloth.passwordFile` to a sops/agenix-managed env-file containing `UNSLOTH_STUDIO_PASSWORD=<secret>`, or keep the bind on loopback (the default).
+              ''
+            ];
+          }
           (lib.mkIf cfg.enable {
             virtualisation.podman.enable = lib.mkDefault true;
 
@@ -189,10 +209,10 @@
             };
 
             # Publish the ports only when bound to a routable address;
-            # loopback needs no firewall hole.
+            # loopback needs no firewall hole. Same `isLoopback`
+            # predicate the safety warning uses.
             networking.firewall.allowedTCPPorts =
-              lib.optionals (cfg.host != "127.0.0.1" && cfg.host != "localhost")
-                [ cfg.port cfg.jupyterPort ];
+              lib.optionals (!isLoopback) [ cfg.port cfg.jupyterPort ];
 
             systemd.user.services.unsloth = {
               wantedBy = [ "default.target" ];

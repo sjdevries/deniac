@@ -141,5 +141,61 @@
         expected = [ 8000 8888 ];
       }
     );
+
+    # Safety net: exposed beyond loopback with NO passwordFile must
+    # produce a build-time warning naming the fix (Studio ships
+    # server-side tools ON — this combination is RCE otherwise).
+    test-exposed-without-password-warns = denTest (
+      { inputs, den, deniac, igloo, ... }:
+      {
+        imports = [ (inputs.den.namespace "deniac" [ inputs.self ]) ];
+        den.hosts.x86_64-linux.igloo = { };
+        den.aspects.igloo.includes = [ deniac.ai.unsloth ];
+        den.aspects.igloo.nixos.deniac.ai.unsloth.enable = true;
+        den.aspects.igloo.nixos.deniac.ai.unsloth.host = "0.0.0.0";
+
+        expr = inputs.nixpkgs.lib.any
+          (w: inputs.nixpkgs.lib.hasInfix "deniac.ai.unsloth" w
+               && inputs.nixpkgs.lib.hasInfix "passwordFile" w)
+          igloo.warnings;
+        expected = true;
+      }
+    );
+
+    # The warning is specifically about the missing secret: exposing
+    # WITH a passwordFile set must be silent.
+    test-exposed-with-password-no-warn = denTest (
+      { inputs, den, deniac, igloo, ... }:
+      {
+        imports = [ (inputs.den.namespace "deniac" [ inputs.self ]) ];
+        den.hosts.x86_64-linux.igloo = { };
+        den.aspects.igloo.includes = [ deniac.ai.unsloth ];
+        den.aspects.igloo.nixos.deniac.ai.unsloth.enable = true;
+        den.aspects.igloo.nixos.deniac.ai.unsloth.host = "0.0.0.0";
+        den.aspects.igloo.nixos.deniac.ai.unsloth.passwordFile =
+          "/run/secrets/unsloth-studio.env";
+
+        expr = inputs.nixpkgs.lib.any
+          (w: inputs.nixpkgs.lib.hasInfix "deniac.ai.unsloth" w)
+          igloo.warnings;
+        expected = false;
+      }
+    );
+
+    # Loopback (the default) never warns — nothing is reachable off-box.
+    test-loopback-no-warn = denTest (
+      { inputs, den, deniac, igloo, ... }:
+      {
+        imports = [ (inputs.den.namespace "deniac" [ inputs.self ]) ];
+        den.hosts.x86_64-linux.igloo = { };
+        den.aspects.igloo.includes = [ deniac.ai.unsloth ];
+        den.aspects.igloo.nixos.deniac.ai.unsloth.enable = true;
+
+        expr = inputs.nixpkgs.lib.any
+          (w: inputs.nixpkgs.lib.hasInfix "deniac.ai.unsloth" w)
+          igloo.warnings;
+        expected = false;
+      }
+    );
   };
 }
