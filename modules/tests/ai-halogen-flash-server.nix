@@ -152,6 +152,69 @@
       }
     );
 
+    # memoryLow = "84G": the reclaim protection lands on a declared
+    # `halogen.slice` (survives podman's per-start random scope ids),
+    # and the runner nests the container under it with
+    # `--cgroup-parent=halogen.slice`.
+    test-memorylow-slice = denTest (
+      {
+        inputs,
+        den,
+        deniac,
+        igloo,
+        ...
+      }:
+      {
+        imports = [ (inputs.den.namespace "deniac" [ inputs.self ]) ];
+        den.hosts.x86_64-linux.igloo = { };
+        den.aspects.igloo.includes = [ deniac.ai.halogen-flash-server ];
+        den.aspects.igloo.nixos.deniac.ai.halogen-flash-server.enable = true;
+        den.aspects.igloo.nixos.deniac.ai.halogen-flash-server.memoryLow = "84G";
+
+        expr = {
+          sliceLow = igloo.systemd.slices.halogen.sliceConfig.MemoryLow;
+          runnerNests =
+            inputs.nixpkgs.lib.hasInfix "--cgroup-parent=halogen.slice"
+            (builtins.readFile igloo.systemd.services.halogen-flash.serviceConfig.ExecStart);
+        };
+        expected = {
+          sliceLow = "84G";
+          runnerNests = true;
+        };
+      }
+    );
+
+    # memoryLow unset (default null) with the service enabled: no
+    # `halogen` slice is defined and the runner carries no
+    # `--cgroup-parent` — the container stays in podman's default
+    # placement, byte-identical to the pre-option behaviour.
+    test-memorylow-default-inert = denTest (
+      {
+        inputs,
+        den,
+        deniac,
+        igloo,
+        ...
+      }:
+      {
+        imports = [ (inputs.den.namespace "deniac" [ inputs.self ]) ];
+        den.hosts.x86_64-linux.igloo = { };
+        den.aspects.igloo.includes = [ deniac.ai.halogen-flash-server ];
+        den.aspects.igloo.nixos.deniac.ai.halogen-flash-server.enable = true;
+
+        expr = {
+          sliceDefined = igloo.systemd.slices ? halogen;
+          runnerNests =
+            inputs.nixpkgs.lib.hasInfix "--cgroup-parent"
+            (builtins.readFile igloo.systemd.services.halogen-flash.serviceConfig.ExecStart);
+        };
+        expected = {
+          sliceDefined = false;
+          runnerNests = false;
+        };
+      }
+    );
+
     # gib = 120 (standalone-host GTT ceiling): emitted as the ttm
     # pages_limit modprobe option (120 GiB * 262144 pages/GiB = 31457280
     # 4 KiB pages).

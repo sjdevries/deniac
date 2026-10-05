@@ -126,6 +126,57 @@
       }
     );
 
+    # memoryLow = "32G": the reclaim protection lands on a declared
+    # `gufo.slice` in the service user's own manager tree
+    # (`systemd.user.slices` — rootless shape), and the runner nests
+    # the container under it with `--cgroup-parent=gufo.slice`.
+    test-memorylow-user-slice = denTest (
+      { inputs, den, deniac, igloo, ... }:
+      {
+        imports = [ (inputs.den.namespace "deniac" [ inputs.self ]) ];
+        den.hosts.x86_64-linux.igloo = { };
+        den.aspects.igloo.includes = [ deniac.ai.gufo ];
+        den.aspects.igloo.nixos.deniac.ai.gufo.enable = true;
+        den.aspects.igloo.nixos.deniac.ai.gufo.memoryLow = "32G";
+
+        expr = {
+          sliceLow = igloo.systemd.user.slices.gufo.sliceConfig.MemoryLow;
+          runnerNests =
+            inputs.nixpkgs.lib.hasInfix "--cgroup-parent=gufo.slice"
+            (builtins.readFile igloo.systemd.user.services.gufo.serviceConfig.ExecStart);
+        };
+        expected = {
+          sliceLow = "32G";
+          runnerNests = true;
+        };
+      }
+    );
+
+    # memoryLow unset (default null) with the service enabled: no
+    # `gufo` user slice is defined and the runner carries no
+    # `--cgroup-parent` — default placement, byte-identical to the
+    # pre-option behaviour.
+    test-memorylow-default-inert = denTest (
+      { inputs, den, deniac, igloo, ... }:
+      {
+        imports = [ (inputs.den.namespace "deniac" [ inputs.self ]) ];
+        den.hosts.x86_64-linux.igloo = { };
+        den.aspects.igloo.includes = [ deniac.ai.gufo ];
+        den.aspects.igloo.nixos.deniac.ai.gufo.enable = true;
+
+        expr = {
+          sliceDefined = igloo.systemd.user.slices ? gufo;
+          runnerNests =
+            inputs.nixpkgs.lib.hasInfix "--cgroup-parent"
+            (builtins.readFile igloo.systemd.user.services.gufo.serviceConfig.ExecStart);
+        };
+        expected = {
+          sliceDefined = false;
+          runnerNests = false;
+        };
+      }
+    );
+
     # gib = 120 (standalone-host GTT ceiling): emitted as the ttm
     # pages_limit modprobe option (120 GiB * 262144 = 31457280 pages).
     test-gib-modprobe = denTest (

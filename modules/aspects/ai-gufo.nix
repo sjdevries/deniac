@@ -91,6 +91,7 @@
           --device /dev/dri \
           --group-add keep-groups \
           --ulimit memlock=-1:-1 \
+          ${lib.optionalString (cfg.memoryLow != null) "--cgroup-parent=gufo.slice "} \
           -p ${toString cfg.port}:${toString cfg.apiPort} \
           -v ${lib.escapeShellArg (cfg.modelsDir + ":/models:ro")} \
           ${lib.escapeShellArg cfg.image} \
@@ -279,6 +280,53 @@
           '';
         };
 
+        memoryLow = lib.mkOption {
+          default = null;
+          type = lib.types.nullOr lib.types.str;
+          example = "32G";
+          description = ''
+            cgroup v2 `memory.low` for the container, as a systemd byte
+            size (e.g. `"32G"`). Protects the container's pages — above
+            all the mmap'd GGUF weights — from memory reclaim: under
+            pressure the kernel evicts every other cgroup first, and
+            touches this one only when nothing else can absorb the hit.
+
+            Same eviction mechanism as the halogen aspect's option of
+            the same name: gufo maps the GGUF weights, so they are
+            accounted as `file` memory (page cache) — the kernel's
+            *preferred* reclaim target, cheap to re-read for anything
+            but a live inference request. A streaming workload (rsync,
+            defrag, backups) can push the model out of RAM and stall
+            or kill the server mid-request; with `swap = 0` the file
+            pages are the only reclaimable memory, so they are exactly
+            what goes.
+
+            Rootless shape: the container is nested under a dedicated
+            slice inside the service user's own cgroup tree
+            (`--cgroup-parent=gufo.slice`, resolved by the user's
+            systemd manager to
+            `user-<uid>.slice/user@<uid>.service/gufo.slice`), and
+            `MemoryLow` is set on `systemd.user.slices."gufo"` —
+            cgroup v2 protection is inherited by the whole subtree.
+            The slice is what makes it durable across podman's
+            per-start random scope ids. The user manager's memory
+            controller is delegated by NixOS, so the protection is
+            effective within the user's allocation.
+
+            Size it at or above the container's resident working set
+            (weights + KV pool + runtime) with a little slack. It is a
+            protection floor, not a reservation. Note the whole user
+            slice is the kernel's unit of comparison against *other*
+            users' slices too — keep the value inside what the user's
+            session is meant to hold.
+
+            null (default) leaves the container in podman's default
+            placement with no reclaim protection. A host's own
+            `--cgroup-parent` in `extraOptions` overrides the managed
+            one (last flag wins).
+          '';
+        };
+
         extraOptions = lib.mkOption {
           default = [ ];
           type = lib.types.listOf lib.types.str;
@@ -336,6 +384,14 @@
                 ExecStart = "${runner}/bin/gufo-run";
               };
             };
+          })
+          (lib.mkIf (cfg.memoryLow != null) {
+            # Reclaim protection for the container's pages (see
+            # `memoryLow`). Rootless: the slice lives in the service
+            # user's own manager tree (`systemd.user.slices`), where
+            # podman nests the container via `--cgroup-parent`. The
+            # unit is only instantiated when something lands under it.
+            systemd.user.slices."gufo".sliceConfig.MemoryLow = cfg.memoryLow;
           })
           (lib.mkIf (cfg.gib != null) {
             # Standalone-host GTT ceiling (see `gib` for the

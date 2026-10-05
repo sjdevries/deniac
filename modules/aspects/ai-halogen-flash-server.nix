@@ -64,6 +64,7 @@
           --group-add keep-groups \
           --ipc=host \
           --ulimit memlock=-1:-1 \
+          ${lib.optionalString (cfg.memoryLow != null) "--cgroup-parent=halogen.slice "} \
           ${lib.optionalString cfg.download "-e HALOGEN_DOWNLOAD=${lib.escapeShellArg cfg.modelRepo}"} \
           ${lib.concatMapStringsSep " " (k: "-e ${lib.escapeShellArg (k + "=" + cfg.env."${k}")}") (lib.attrNames cfg.env)} \
           -v ${lib.escapeShellArg (cfg.modelsDir + ":/models" + lib.optionalString (!cfg.download) ":ro")} \
@@ -222,6 +223,51 @@
           '';
         };
 
+        memoryLow = lib.mkOption {
+          default = null;
+          type = lib.types.nullOr lib.types.str;
+          example = "84G";
+          description = ''
+            cgroup v2 `memory.low` for the container, as a systemd byte
+            size (e.g. `"84G"`). Protects the container's pages — above
+            all the mmap'd model weights — from memory reclaim: under
+            pressure the kernel evicts every other cgroup first, and
+            touches this one only when nothing else can absorb the hit.
+
+            Why this exists: the server opens the weights with `mmap`,
+            so they are accounted as `file` memory (page cache) — and
+            clean page cache is the kernel's *preferred* reclaim
+            target, because re-reading it is normally cheap. For a
+            live inference request it is not: a streaming workload
+            (rsync, defrag, backups) can push the whole model out of
+            RAM, and the re-fault mid-request stalls or kills the
+            server. With `swap = 0` on the host the file pages are the
+            only reclaimable memory, so they are exactly what goes.
+
+            Implemented by nesting the container under a dedicated
+            slice (`--cgroup-parent=halogen.slice`, via podman's
+            systemd cgroup manager) and setting `MemoryLow` on that
+            slice — cgroup v2 protection is inherited by the whole
+            subtree. The slice is what makes it durable: podman gives
+            every container a fresh random `libpod-*.scope` id on
+            each start, so a value written into the scope at runtime
+            vanishes with it, while the declared slice keeps the
+            protection across every restart, reboot, and container
+            recreation.
+
+            Size it at or above the container's resident working set
+            (weights + runtime) with a little slack. It is a
+            protection floor, not a reservation — setting it well
+            above actual usage wastes nothing.
+
+            null (default) leaves the container in podman's default
+            `machine.slice` with no reclaim protection. A host's own
+            `--cgroup-parent` in `extraOptions` overrides the managed
+            one (last flag wins), so the escape hatch can retarget the
+            nesting if needed.
+          '';
+        };
+
         extraOptions = lib.mkOption {
           default = [ ];
           type = lib.types.listOf lib.types.str;
@@ -288,6 +334,16 @@
                 ExecStart = "${runner}/bin/halogen-flash-run";
               };
             };
+          })
+          (lib.mkIf (cfg.memoryLow != null) {
+            # Reclaim protection for the container's pages (see
+            # `memoryLow`). The runner nests the container under this
+            # slice with `--cgroup-parent`; the protection lives on the
+            # slice so it survives podman's per-start random scope ids.
+            # Plain definition (priority 100): a host that wants a
+            # different value overrides the leaf, and the slice unit is
+            # only instantiated when something lands under it.
+            systemd.slices."halogen".sliceConfig.MemoryLow = cfg.memoryLow;
           })
           (lib.mkIf (cfg.gib != null) {
             # Standalone-host GTT ceiling. Same option nix-amd-ai uses (the
