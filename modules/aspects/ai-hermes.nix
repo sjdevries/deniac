@@ -1,57 +1,55 @@
 # deniac.ai.hermes — Hermes Agent (Nous Research) in a bubblewrap jail.
 #
-# Hermes is a self-improving agent whose mutable state (~/.hermes: sessions,
-# skills, memories, and a pip/npm layer it owns) must stay writable, while
-# the HOST system must stay protected. The upstream NixOS module's answer
-# is a rootful podman container — which on this fleet proved unusable
-# rootless (the module runs the container as root by design; sudoless
-# podman is not a configuration of it, and even the sudo compromise did
-# not work). Bubblewrap gives the same jail with no daemon, no root, and
-# no sudo: the agent runs as the user, inside a mount namespace where the
-# system is read-only and the home directory is the workspace.
+# PHASE 1 (this aspect): the core jail. Hermes runs as the user inside a
+# mount namespace where the system is read-only and the user's home is the
+# workspace. Model/provider configuration happens in the agent's own
+# ~/.hermes/config.yaml (mutable tier — back it up). Later phases mirror
+# the installer's choices and are documented in docs/ai-hermes.md:
 #
-# TTS strategy (the lesson from the old python311.withPackages [neutts]
-# wrapper, which rotted when nixpkgs dropped neutts):
-#   - DECLARE in Nix what is stable: espeak-ng, ffmpeg, socket paths.
-#   - PIP-INSTALL in the jail what is mutable: `pip install neutts` into
-#     ~/.hermes/venv (neutts lives on PyPI; nixpkgs churn cannot break
-#     the agent's Python layer anymore).
-# The jail's mutable layer IS the TTS configuration strategy.
+#   Phase 2: the gateway as a systemd user service (messaging platforms)
+#   Phase 3: memory providers (MemPalace over MCP — shared with dsh)
+#   TTS: deliberately OUT of scope — audio stories live in ComfyUI
+#        workflows (ACE-Step & friends), not in a real-time agent TTS
+#        engine. If ever wanted, declare it (vendored buildPythonPackage
+#        for neutts/neucodec on nixpkgs torch) — analysis preserved in
+#        the doc.
+#
+# Why bubblewrap, not the upstream podman container: the upstream NixOS
+# module's container mode runs the container as root (its docs: "Podman's
+# rootful containers require sudo"). Rootless podman is not a configuration
+# of that module — it contradicts it — and on this fleet the sudoless path
+# failed completely, and the sudo compromise too. Bubblewrap delivers the
+# same jail with no daemon, no root, no sudo.
+#
+# Reproducibility model: everything the stack IS lives in Nix (hash-pinned);
+# the only mutable part is what the agent LEARNED (~/.hermes: sessions,
+# skills, memories, config) — backed up like precious-bulk weights, never
+# rebuilt. The jail's mutable layer is the agent's experience, not its
+# configuration.
 #
 # Isolation model: the jail protects the SYSTEM from the agent (no writes
 # outside the user's home, no root, no host state), not the user from
-# themselves — the agent's own ~/.hermes, ~/.npm and declared project
-# dirs are deliberately read-write.
+# themselves — the user's own ~/.hermes and declared project dirs are
+# deliberately read-write.
 #
 # Usage (per-user, Home Manager class):
 #
 #   den.aspects.tux.includes = [ deniac.ai.hermes ];
 #   den.aspects.tux.homeManager.deniac.ai.hermes = {
 #     enable = true;
-#     tts.enable = true;
 #     extraReadwriteDirs = [ "/home/tux/projects" ];
 #   };
-#
-# Then bootstrap the mutable TTS layer once, inside the jail:
-#
-#   hermes-jailed bash -c 'python3 -m venv ~/.hermes/venv &&
-#     ~/.hermes/venv/bin/pip install neutts soundfile'
-#
-# (v1 scope: the interactive jail binary. The gateway as a systemd user
-# service and the MemPalace memory provider over MCP are documented
-# follow-ups — see docs/ai-hermes.md.)
 
 { inputs, lib, ... }:
 {
   deniac.ai.hermes = {
     description = ''
       Hermes Agent (Nous Research, MIT) sandboxed with bubblewrap — a
-      per-user jail where ~/.hermes (sessions, skills, memories, and the
-      agent's own pip layer) stays writable while the host system is
-      read-only. The daemonless alternative to the upstream rootful
-      podman container: no sudo, no container image, no root. TTS is
-      split by mutability: espeak-ng/ffmpeg declared in Nix, neutts
-      pip-installed into the jail's ~/.hermes/venv.
+      per-user jail where ~/.hermes (sessions, skills, memories) stays
+      writable while the host system is read-only. The daemonless,
+      rootless alternative to the upstream rootful podman container.
+      Phase 1: the core jail; gateway service and MemPalace memory are
+      documented follow-ups.
     '';
 
     homeManager =
@@ -59,23 +57,17 @@
     let
       cfg = config.deniac.ai.hermes;
 
-      # Everything the jail can execute: hermes itself + declared extras
-      # + the mutable venv (last, so `pip install`ed CLIs win).
+      # Everything the jail can execute: hermes itself + declared extras,
+      # then the agent's own mutable venv last (its learned tool layer —
+      # experience, not configuration; back it up with the rest of
+      # ~/.hermes).
       jailPath =
         lib.makeBinPath ([ cfg.package ] ++ cfg.extraPackages)
-        + ":''${HOME}/.hermes/venv/bin";
-
-      # TTS wiring: stable pieces declared in Nix; the heavy voice model
-      # (neutts) is expected in the mutable venv, not here.
-      ttsPackages = [ pkgs.espeak-ng pkgs.ffmpeg ];
-      ttsEnv = {
-        ESPEAK_DATA_PATH = "${pkgs.espeak-ng}/share/espeak-ng-data";
-        PULSE_SERVER = "unix:''${XDG_RUNTIME_DIR}/pulse/native";
-      };
+        + ":\${HOME}/.hermes/venv/bin";
 
       envArgs =
         lib.concatStringsSep " "
-          (lib.mapAttrsToList (k: v: "--setenv ${k} \"${v}\"") (cfg.env // ttsEnv));
+          (lib.mapAttrsToList (k: v: "--setenv ${k} \"${v}\"") cfg.env);
 
       roBindArgs =
         lib.concatStringsSep " "
@@ -154,25 +146,13 @@
         env = lib.mkOption {
           type = lib.types.attrsOf lib.types.str;
           default = { };
-          example = { HERMES_MODEL = "qwen/qwen3.6-27b"; };
+          example = { CAMOFOX_URL = "http://localhost:9377"; };
           description = "Extra environment variables set inside the jail.";
-        };
-
-        tts.enable = lib.mkOption {
-          type = lib.types.bool;
-          default = false;
-          description = ''
-            Declare the stable TTS pieces: espeak-ng + ffmpeg on the
-            jail PATH, ESPEAK_DATA_PATH and PULSE_SERVER wired to the
-            user's audio socket. The heavy voice model (neutts, PyPI)
-            is installed ONCE into the mutable ~/.hermes/venv — see the
-            bootstrap command in docs/ai-hermes.md.
-          '';
         };
       };
 
       config = lib.mkIf cfg.enable {
-        home.packages = [ jail ] ++ lib.optionals cfg.tts.enable ttsPackages;
+        home.packages = [ jail ];
       };
     };
   };
