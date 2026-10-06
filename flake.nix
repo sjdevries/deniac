@@ -18,9 +18,10 @@
     comfyui-nix.url = "github:sjdevries/comfyui-nix/feat/rocm-nightly-channel";
     # Official ACE-Step ComfyUI nodes — a thin API client (torch/numpy/
     # requests only) for the ACE-Step 1.5 music-gen server: text2music,
-    # cover/remix, repaint. Plain node repo (no flake), consumed as a
-    # pinned source tree for services.comfyui.customNodes.
-    ace-step-comfyui.url = "github:ace-step/ACE-Step-ComfyUI";
+    # cover/remix, repaint. Plain node repo (no flake.nix), so it is
+    # locked with flake=false and consumed as a source-tree path for
+    # services.comfyui.customNodes.
+    ace-step-comfyui.url = "github:ace-step/ACE-Step-ComfyUI?flake=false";
   };
 
   outputs = inputs: (
