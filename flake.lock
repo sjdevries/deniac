@@ -1,5 +1,21 @@
 {
   "nodes": {
+    "ace-step-comfyui": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1772361323,
+        "narHash": "sha256-R3RiVs7iyIW6gxJ62DhbW3cuMvO5IAX+LiLGk28D3nI=",
+        "owner": "ace-step",
+        "repo": "ACE-Step-ComfyUI",
+        "rev": "5de16c9bc43abdbe9a3104d220bba9f71b51165a",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ace-step",
+        "repo": "ACE-Step-ComfyUI",
+        "type": "github"
+      }
+    },
     "bun2nix": {
       "inputs": {
         "flake-parts": [
@@ -315,6 +331,7 @@
     },
     "root": {
       "inputs": {
+        "ace-step-comfyui": "ace-step-comfyui",
         "comfyui-nix": "comfyui-nix",
         "den": "den",
         "import-tree": "import-tree",
