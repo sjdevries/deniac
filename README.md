@@ -99,9 +99,11 @@ Path scheme: `persistent.<domain>.<host>.<user>.<tier>.<aspect>`
           store-wired
     - [`ai.ace-step`](docs/ai-ace-step.md) — ACE-Step music generation
           (official ComfyUI nodes: text2music, cover/remix, repaint)
+    - [`ai.hermes`](docs/ai-hermes.md) — Hermes Agent in a bubblewrap
+          jail (rootless, daemonless; mutable `~/.hermes` + pip TTS layer)
 - [x] Declarative model registry + [`deniac-model-add`](docs/deniac-model-add.md)
           helper (CivitAI/HF → model-store config entry)
-- [x] Proper den tests (`denTest`) — all ten suites, green under nix-unit
+- [x] Proper den tests (`denTest`) — all eleven suites, green under nix-unit
 - [x] Per-aspect documentation — `docs/ai-*.md`
 - [ ] More aspects (the rest of the software I actually use)
 - [ ] Templates + examples
