@@ -72,7 +72,7 @@
     # Nodes installed but the ComfyUI service disabled → a warning fires
     # (the nodes have nothing to attach to).
     test-warning-without-comfyui-service = denTest (
-      { inputs, den, deniac, lib, igloo, ... }:
+      { inputs, den, deniac, igloo, ... }:
       {
         imports = [ (inputs.den.namespace "deniac" [ inputs.self ]) ];
         den.hosts.x86_64-linux.igloo = { };
@@ -81,7 +81,7 @@
 
         expr = {
           hasWarning =
-            builtins.any (w: lib.strings.isInfixOf "ComfyUI service is not" w)
+            builtins.any (w: builtins.match ".*ComfyUI service is not.*" w != null)
               igloo.warnings;
         };
         expected = {
@@ -92,7 +92,7 @@
 
     # With the ComfyUI service enabled too (the normal pairing), silent.
     test-no-warning-with-comfyui-service = denTest (
-      { inputs, den, deniac, lib, igloo, ... }:
+      { inputs, den, deniac, igloo, ... }:
       {
         imports = [ (inputs.den.namespace "deniac" [ inputs.self ]) ];
         den.hosts.x86_64-linux.igloo = { };
@@ -103,7 +103,7 @@
         expr = {
           comfyuiEnable = igloo.services.comfyui.enable;
           hasWarning =
-            builtins.any (w: lib.strings.isInfixOf "ComfyUI service is not" w)
+            builtins.any (w: builtins.match ".*ComfyUI service is not.*" w != null)
               igloo.warnings;
         };
         expected = {
