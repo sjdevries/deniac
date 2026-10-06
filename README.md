@@ -97,9 +97,11 @@ Path scheme: `persistent.<domain>.<host>.<user>.<tier>.<aspect>`
           (Home Manager)
     - [`ai.strata`](docs/ai-strata.md) — strata inference consumer,
           store-wired
+    - [`ai.ace-step`](docs/ai-ace-step.md) — ACE-Step music generation
+          (official ComfyUI nodes: text2music, cover/remix, repaint)
 - [x] Declarative model registry + [`deniac-model-add`](docs/deniac-model-add.md)
           helper (CivitAI/HF → model-store config entry)
-- [x] Proper den tests (`denTest`) — all nine suites, green under nix-unit
+- [x] Proper den tests (`denTest`) — all ten suites, green under nix-unit
 - [x] Per-aspect documentation — `docs/ai-*.md`
 - [ ] More aspects (the rest of the software I actually use)
 - [ ] Templates + examples

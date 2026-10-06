@@ -16,6 +16,11 @@
     # rocmNightly wheel-channel change on real gfx1151 hardware before the
     # upstream PR merges. Re-point to github:utensils/comfyui-nix once merged.
     comfyui-nix.url = "github:sjdevries/comfyui-nix/feat/rocm-nightly-channel";
+    # Official ACE-Step ComfyUI nodes — a thin API client (torch/numpy/
+    # requests only) for the ACE-Step 1.5 music-gen server: text2music,
+    # cover/remix, repaint. Plain node repo (no flake), consumed as a
+    # pinned source tree for services.comfyui.customNodes.
+    ace-step-comfyui.url = "github:ace-step/ACE-Step-ComfyUI";
   };
 
   outputs = inputs: (
