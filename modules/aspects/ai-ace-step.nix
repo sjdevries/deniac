@@ -35,14 +35,8 @@
 
 { inputs, lib, ... }:
 let
-  # Capture the comfyui-nix NixOS module now: the `nixos` content below
-  # is evaluated later inside the host's nixosSystem eval, where `inputs`
-  # is not a module argument. (Same pattern as ai.comfyui; importing the
-  # same store path twice — here and via ai.comfyui — dedups.)
-  comfyuiModule = inputs.comfyui-nix.nixosModules.default;
-
-  # The official node repo as a pinned source tree (plain repo, no flake —
-  # used as a path, never evaluated as a flake).
+  # The official node repo as a pinned source tree (plain repo, no flake
+  # — locked flake=false, used as a path, never evaluated as a flake).
   aceStepNode = inputs.ace-step-comfyui;
 in
 {
@@ -67,7 +61,14 @@ in
       cfg = config.deniac.ai.ace-step;
     in
     {
-      imports = [ comfyuiModule ];
+      # NOTE: this aspect deliberately does NOT import the comfyui-nix
+      # NixOS module. Importing it here *and* via ai.comfyui double-applies
+      # it (the module system does not dedup the two function closures),
+      # and comfyui-nix's `services.comfyui.packageSet.default` is a
+      # unique-priority option that errors on the duplicate definition.
+      # Include `deniac.ai.comfyui` (or the comfyui-nix module directly)
+      # alongside this one — it provides the `services.comfyui.*` option
+      # tree this aspect writes into.
 
       options.deniac.ai.ace-step = {
         enable = lib.mkOption {

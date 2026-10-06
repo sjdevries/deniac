@@ -51,6 +51,12 @@ running the server.
 
 ## Usage
 
+**Requires `deniac.ai.comfyui`** (or the comfyui-nix module directly) to be
+included alongside — it provides the `services.comfyui.*` option tree.
+The ace-step aspect deliberately does not import the comfyui-nix module
+itself: doing so in both aspects double-applies it and collides on
+comfyui-nix's unique-priority `services.comfyui.packageSet.default`.
+
 ```nix
 # ComfyUI on a Strix Halo box + ACE-Step nodes
 den.aspects.igloo.includes = [ deniac.ai.comfyui deniac.ai.ace-step ];
