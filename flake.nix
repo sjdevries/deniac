@@ -19,9 +19,12 @@
     # Official ACE-Step ComfyUI nodes — a thin API client (torch/numpy/
     # requests only) for the ACE-Step 1.5 music-gen server: text2music,
     # cover/remix, repaint. Plain node repo (no flake.nix), so it is
-    # locked with flake=false and consumed as a source-tree path for
+    # locked with flake = false and consumed as a source-tree path for
     # services.comfyui.customNodes.
-    ace-step-comfyui.url = "github:ace-step/ACE-Step-ComfyUI?flake=false";
+    ace-step-comfyui = {
+      url = "github:ace-step/ACE-Step-ComfyUI";
+      flake = false;
+    };
   };
 
   outputs = inputs: (
