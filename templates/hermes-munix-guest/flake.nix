@@ -1,21 +1,31 @@
-# hermes-munix-guest — a minimal munix microVM guest for a Hermes role profile.
+# munix-guest — a PARAMETRIC microVM guest builder.
 #
-# THE CLOSURE IS THE POLICY.
+# THE CLOSURE IS THE POLICY (per app).
 # A munix guest boots its OWN NixOS closure (boot.isContainer = true, erofs
 # root). The guest's /nix/store *is* this closure — it cannot see the host's
-# store at all. So whatever you list here is the entire universe the VM can
-# see and run. A minimal closure = minimal store visibility = minimal
-# capability. This is the store-level default-deny that the bwrap tier cannot
-# give you (bwrap binds the host /nix/store read-only, so the agent sees
-# every package on the host).
+# store, nor any other guest's store. So whatever a given app's closure lists
+# is that VM's entire visible universe. Minimal closure = minimal visibility.
 #
-# Build the toplevel, point the deniac launcher's `munixClosure` at it, and
-# the researcher compartment runs inside this closure — nothing more.
+# This is the reusable foundation for sandboxing MANY desktop apps the same
+# way — not just Hermes. Each app gets its own closure via `mkGuest`:
+#
+#   researcher  = mkGuest { app = hermes; graphics = false; ... }   # headless
+#   steam-guest = mkGuest { app = steam;  graphics = true;  ... }   # full GPU
+#
+# `graphics = false` drops mesa entirely (headless agents). `graphics = true`
+# pulls the full GPU stack (games / GUI apps). The mesa build is a SHARED
+# cached closure: built once, reused by every graphics=true guest on the same
+# pin — so slimming the researcher is a pure win, and the GPU guests still
+# get everything they need.
+#
+# Trust note: keep DIFFERENT-trust apps in DIFFERENT closures/VMs. Never let
+# an untrusted app's closure share a hermes kanban board with a trusted one —
+# the shared board is the confused-deputy surface. Cross-trust handoff is a
+# human gate, not kanban/peer automation.
 {
-  description = "Minimal munix microVM guest for the Hermes researcher (closure = store-visibility allowlist)";
+  description = "Parametric munix microVM guest builder (closure = per-app store-visibility allowlist)";
 
-  # munix's own binary cache — without it the guest closure builds from source
-  # (slow). Harmless to keep; it only substitutes, never executes.
+  # munix's binary cache — without it the guest closure builds from source.
   nixConfig = {
     extra-substituters = [ "https://cache.clan.lol" ];
     extra-trusted-public-keys = [
@@ -36,41 +46,70 @@
       system = "x86_64-linux";
       hermes = llm-agents.packages.${system}.hermes-agent;
 
-      guest = nixpkgs.lib.nixosSystem {
-        inherit system;
-        modules = [
-          munix.nixosModules.default
-          (
-            { pkgs, ... }:
-            {
-              system.stateVersion = "26.05";
-              nixpkgs.hostPlatform = system;
+      # ── The parametric builder ───────────────────────────────────────
+      # mkGuest { app, graphics, packages, defaultCommand, extraModules }
+      #   app            the one application this VM exists to run
+      #   graphics       false → no mesa (headless); true → full GPU stack
+      #   packages       extra packages the app needs (added to the allowlist)
+      #   defaultCommand what runs on boot with no args (the launcher overrides)
+      #   extraModules   any additional NixOS modules for this guest
+      #
+      # Returns the nixosSystem; take .config.system.build.munix for the
+      # wrapped launcher, or .config.system.build.toplevel for the raw
+      # closure the deniac launcher's munixClosure points at.
+      mkGuest =
+        {
+          app,
+          graphics ? false,
+          packages ? [ ],
+          defaultCommand ? "bash",
+          extraModules ? [ ],
+        }:
+        nixpkgs.lib.nixosSystem {
+          inherit system;
+          modules = [
+            munix.nixosModules.default
+            (
+              { pkgs, lib, ... }:
+              {
+                system.stateVersion = "26.05";
+                nixpkgs.hostPlatform = system;
 
-              # ── The allowlist ──────────────────────────────────────────
-              # hermes is the only app. The base system still provides bash +
-              # coreutils (essential, not part of the stripped defaultPackages).
-              # Add a tool here ONLY if the researcher genuinely needs it —
-              # each entry widens what the VM can see and reach.
-              environment.systemPackages = [ hermes ];
+                # The munix module hard-sets graphics=true; mkForce lets the
+                # caller turn it OFF for headless agents (dropping mesa).
+                hardware.graphics.enable = lib.mkForce graphics;
 
-              # What runs when the VM starts with no command. The deniac
-              # launcher overrides this with `hermes -p <name>`.
-              virtualisation.munix.defaultCommand = "hermes -p researcher";
-            }
-          )
-        ];
-      };
+                # The allowlist: the app + whatever it genuinely needs.
+                environment.systemPackages = [ app ] ++ packages;
+
+                virtualisation.munix.defaultCommand = defaultCommand;
+              }
+            )
+          ]
+          ++ extraModules;
+        };
     in
     {
-      packages.${system} = {
-        # The wrapped launcher (toplevel + default command baked in). Easiest
-        # to run directly: ./result/bin/munix --bind <profile-home> <dst>
-        default = guest.config.system.build.munix;
+      # The reusable builder — other flakes: inputs.<this-flake>.lib.mkGuest { … }
+      lib.mkGuest = mkGuest;
 
-        # The raw toplevel — this is what the deniac launcher's
-        # `munixClosure` option points at (the launcher passes it to the
-        # raw munix binary alongside its own flags).
-        toplevel = guest.config.system.build.toplevel;
+      packages.${system} = {
+        # Instance #1 — the headless researcher: hermes, NO graphics.
+        researcher =
+          (mkGuest {
+            app = hermes;
+            graphics = false;
+            defaultCommand = "hermes -p researcher";
+          }).config.system.build.munix;
+
+        # Instance #2 — the GPU pattern (Steam). Unfree, so left as the
+        # shape to copy rather than a built output:
+        #
+        # steam = (mkGuest {
+        #   app = nixpkgs.legacyPackages.${system}.steam;
+        #   graphics = true;
+        #   packages = [ ];   # + any game-specific libs
+        # }).config.system.build.munix;
       };
     };
 }
