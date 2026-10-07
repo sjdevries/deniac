@@ -299,6 +299,50 @@ the direction: the coder (more trusted) holds the researcher's key and *polls*
 researcher then holds **no credential to the coder at all** — same
 semi-autonomy, strictly smaller blast radius.
 
+### Deterministic-gate variant (no LLM in the trust path)
+
+`smart` puts an auxiliary LLM in the decision path — it auto-approves what
+it judges low-risk. If you'd rather the gate be **deterministic** — the
+allowlist is the *only* thing you rely on to auto-run, and everything else
+prompts — make the allowlist the authoritative, reviewed contract:
+
+```nix
+# Deterministic: the allowlist IS the policy. Review each entry with
+# `hermes approvals test <cmd>` (dry-run the verdict, never executes).
+settings.approvals.mode = "smart";   # gate stays ON (off = yolo, never here)
+settings.command_allowlist = [
+  # read-only inspection
+  "git status" "git diff" "git log" "git show" "ls" "cat" "grep" "find"
+  # reversible repo work (branch-local only)
+  "git add" "git commit" "git checkout" "git branch" "git stash"
+  # test runners
+  "pytest" "cargo test" "npm test" "make test"
+];
+# Everything NOT above → prompt (or deny if destructive-class). The list is
+# exhaustive for the reversible set, so the LLM only ever sees the dangerous
+# tail — you are not relying on its judgment to bless your normal workflow.
+```
+
+**Honest caveat on the modes.** Hermes ships `smart` and `off`/`yolo` as
+global modes — there is no separate "strict" global flag. The deterministic
+posture is therefore a *discipline of the allowlist*, not a setting:
+enumerate every reversible command you want unattended, and let the gate
+prompt/deny the rest. If you need a hard "nothing but the allowlist runs,
+period," that is the **jail's** job (Layer 1) — pair the tight allowlist
+with a closure/bind set that makes the dangerous commands physically
+impossible, and the LLM's judgment becomes moot.
+
+| | Smart gate | Deterministic gate |
+| --- | --- | --- |
+| Auto-run decision | aux LLM **+** allowlist | allowlist only |
+| Unknown command | LLM judges (approve/deny/prompt) | prompts |
+| What you trust | the aux model's judgment | your reviewed list |
+| Friction | low | higher (more prompts) |
+| Best when | you trust the aux model | you want a reviewable contract |
+
+Both are the same `ai.hermes` profile shape — only the `command_allowlist`
+breadth and how much you lean on `smart` differ. Pick per compartment.
+
 ## Phases (mirroring the installer's choices)
 
 **Phase 1 — the core jail + compartments (this aspect).** Declare
