@@ -1,0 +1,296 @@
+{
+  "nodes": {
+    "bun2nix": {
+      "inputs": {
+        "flake-parts": [
+          "llm-agents",
+          "flake-parts"
+        ],
+        "nixpkgs": [
+          "llm-agents",
+          "nixpkgs"
+        ],
+        "systems": [
+          "llm-agents",
+          "systems"
+        ],
+        "treefmt-nix": [
+          "llm-agents",
+          "treefmt-nix"
+        ]
+      },
+      "locked": {
+        "lastModified": 1788011267,
+        "narHash": "sha256-mEq2kU+ljompTToZ44Afvm7d/rHJ5iMBl0tjZuyShJs=",
+        "owner": "Mic92",
+        "repo": "bun2nix",
+        "rev": "5765b0614591f75ee8ba5596e81ae85c167d1071",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Mic92",
+        "ref": "fix-structured-attrs-hook",
+        "repo": "bun2nix",
+        "type": "github"
+      }
+    },
+    "flake-parts": {
+      "inputs": {
+        "nixpkgs-lib": [
+          "llm-agents",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1788450739,
+        "narHash": "sha256-glZLQlzIn1fXH6PazR2iUmTo7kzzyYSshrWhLS9TqCU=",
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "rev": "31729ca8cbdb4fa927b34e5f4353e6a83f39e993",
+        "type": "github"
+      },
+      "original": {
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "type": "github"
+      }
+    },
+    "flake-parts_2": {
+      "inputs": {
+        "nixpkgs-lib": [
+          "munix",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1778716662,
+        "narHash": "sha256-m1Yf0wZ8j1OHjTc2UwHwyQRSnNeSgLJOd7q5Y45hzi4=",
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "rev": "f7c1a2d347e4c52d5fb8d10cb4d94b5884e546fb",
+        "type": "github"
+      },
+      "original": {
+        "owner": "hercules-ci",
+        "repo": "flake-parts",
+        "type": "github"
+      }
+    },
+    "libkrun-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1780628108,
+        "narHash": "sha256-EhYnN5Ne1EsyyvIC9F/lrYLYwzhxVeFySQZ7G3lbTNw=",
+        "owner": "valpackett",
+        "repo": "libkrun",
+        "rev": "f70dcf152e706429c84285a58107a255efc9a813",
+        "type": "github"
+      },
+      "original": {
+        "owner": "valpackett",
+        "repo": "libkrun",
+        "rev": "f70dcf152e706429c84285a58107a255efc9a813",
+        "type": "github"
+      }
+    },
+    "llm-agents": {
+      "inputs": {
+        "bun2nix": "bun2nix",
+        "flake-parts": "flake-parts",
+        "nixpkgs": "nixpkgs",
+        "systems": "systems",
+        "treefmt-nix": "treefmt-nix"
+      },
+      "locked": {
+        "lastModified": 1789679545,
+        "narHash": "sha256-Cwac3xWDHPwIqKEkVzEXefxLDMKBh+D+5Icrp4nQg0o=",
+        "owner": "numtide",
+        "repo": "llm-agents.nix",
+        "rev": "32f95b57bd11604871fb663c6724da15112860ee",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "llm-agents.nix",
+        "rev": "32f95b57bd11604871fb663c6724da15112860ee",
+        "type": "github"
+      }
+    },
+    "munix": {
+      "inputs": {
+        "flake-parts": "flake-parts_2",
+        "libkrun-src": "libkrun-src",
+        "muvm-src": "muvm-src",
+        "nixpkgs": "nixpkgs_2",
+        "sidebus": "sidebus",
+        "wl-backdrop": "wl-backdrop"
+      },
+      "locked": {
+        "lastModified": 1787967287,
+        "narHash": "sha256-DKQZC8R90E7uwHvSRgkJuftceRD6ha6MXk3YsEyfn1Y=",
+        "ref": "main",
+        "rev": "a1fde967d1f19af51c977fbf3f2296aeca868c1a",
+        "shallow": true,
+        "type": "git",
+        "url": "https://git.clan.lol/clan/munix"
+      },
+      "original": {
+        "ref": "main",
+        "shallow": true,
+        "type": "git",
+        "url": "https://git.clan.lol/clan/munix"
+      }
+    },
+    "muvm-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1780628452,
+        "narHash": "sha256-Iog/h51Si3f+tUg2KNqHwxWjWtoeEV3udu61gOWyCkQ=",
+        "owner": "valpackett",
+        "repo": "muvm",
+        "rev": "5107ba4170b1e23c6661dbf86d1311d621a928ae",
+        "type": "github"
+      },
+      "original": {
+        "owner": "valpackett",
+        "repo": "muvm",
+        "rev": "5107ba4170b1e23c6661dbf86d1311d621a928ae",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1789370336,
+        "narHash": "sha256-6RSEDHIWQtesQKWSu5qRai8L2h4KgCgMEfJHstW99G4=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "c7def046b9a883d46974757852106483d741586f",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixpkgs-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs_2": {
+      "locked": {
+        "lastModified": 1783776592,
+        "narHash": "sha256-UgCQzxeWI75XM8G+hPrPh+MKzEPjG3SpAj7dtqSbksA=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "e7a3ca8092b61ff85b6a45bf863ea2b2d6a661b3",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "llm-agents": "llm-agents",
+        "munix": "munix",
+        "nixpkgs": [
+          "munix",
+          "nixpkgs"
+        ]
+      }
+    },
+    "sidebus": {
+      "inputs": {
+        "flake-parts": [
+          "munix",
+          "flake-parts"
+        ],
+        "nixpkgs": [
+          "munix",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1779855965,
+        "narHash": "sha256-EfTDIIulXSvuusXC2agACcg91XjOtoEsBoJh0R/nm5E=",
+        "ref": "main",
+        "rev": "b8052f17dcb1e01b2ae67ec3e0709cb2e1f5869b",
+        "shallow": true,
+        "type": "git",
+        "url": "https://git.clan.lol/clan/sidebus"
+      },
+      "original": {
+        "ref": "main",
+        "shallow": true,
+        "type": "git",
+        "url": "https://git.clan.lol/clan/sidebus"
+      }
+    },
+    "systems": {
+      "locked": {
+        "lastModified": 1681028828,
+        "narHash": "sha256-Vy1rq5AaRuLzOxct8nz4T6wlgyUR7zLU309k9mBC768=",
+        "owner": "nix-systems",
+        "repo": "default",
+        "rev": "da67096a3b9bf56a91d16901293e51ba5b49a27e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-systems",
+        "repo": "default",
+        "type": "github"
+      }
+    },
+    "treefmt-nix": {
+      "inputs": {
+        "nixpkgs": [
+          "llm-agents",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1786901030,
+        "narHash": "sha256-WSFCsDSE5ffgD2MqzkM2CYjeFiKhRF/dJUN8uedb6YE=",
+        "owner": "numtide",
+        "repo": "treefmt-nix",
+        "rev": "27b3b12a8e6375f28ebe122f07d230ca5459bbfa",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "treefmt-nix",
+        "type": "github"
+      }
+    },
+    "wl-backdrop": {
+      "inputs": {
+        "flake-parts": [
+          "munix",
+          "flake-parts"
+        ],
+        "nixpkgs": [
+          "munix",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1773997786,
+        "narHash": "sha256-+z7/nTyXK/tpcWEhdtleCfR76Q1+NWIL/P8NlKgkDWI=",
+        "ref": "main",
+        "rev": "fd5a43ff62dafe11a1f636f96fdd59e726478774",
+        "shallow": true,
+        "type": "git",
+        "url": "https://git.clan.lol/valpackett/wl-backdrop"
+      },
+      "original": {
+        "ref": "main",
+        "shallow": true,
+        "type": "git",
+        "url": "https://git.clan.lol/valpackett/wl-backdrop"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
