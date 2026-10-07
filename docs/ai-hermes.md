@@ -232,6 +232,73 @@ agent version. Start strict (default-deny); if hermes reports a missing
 path, add it to that profile's `bindReadonly`/`bindReadwrite` and bake it
 into the default.
 
+## Semi-autonomous handoff: the coder's jail + approval gate
+
+A compartment can be **semi-autonomous** — driven forward by a peer signal
+("research done, continue coding") — while keeping its blast radius small.
+The rule that makes both true at once:
+
+> **A peer message can only trigger what the receiver is *capable of* and
+> *approved to do*.** Bound those two, and the sender's trust stops mattering.
+
+Two independent gates on the coder:
+
+**1. The jail (capability) — what it can touch.** No push credentials bound.
+The coder works in a local worktree; it physically cannot push to `main`
+because the key is not in its world.
+
+```nix
+coder = {
+  tier = "munix";
+  bindReadwrite = [ "/home/tux/coder-worktree" "/home/tux/coder-scratch" ];
+  bindReadonly  = [ "/home/tux/research-out" ];   # researcher's findings, read-only
+  # NOT bound: ~/.ssh, ~/.aws, the creator compartment, host secrets.
+  settings.model.base_url = "http://100.64.0.1:8731/v1";
+};
+```
+
+**2. The approval gate (command) — what it can run unattended.**
+`approvals.mode = "smart"` has an auxiliary LLM assess every shell command:
+low-risk auto-runs, high-risk denies, uncertain prompts. The `command_allowlist`
+makes the *reversible* work run without friction:
+
+```nix
+settings.approvals.mode = "smart";
+settings.command_allowlist = [
+  "git status" "git diff" "git log" "git add" "git commit"
+  "git checkout" "git branch"
+  "pytest" "cargo test" "npm test" "make test"
+];
+# NOT allowlisted → smart gate / deny:
+#   git push, git push --force, git reset --hard, rm -rf, sudo, deploy.
+# Destructive classes are never auto-approved regardless of the allowlist.
+```
+
+**The split that reconciles autonomy with blast radius:**
+
+| Reversible → auto-run | Irreversible → human gate |
+| --- | --- |
+| edit, test, commit to a branch | push to main, deploy, spend |
+| read `research-out` | touch credentials |
+
+So the researcher can genuinely drive the coder —
+`hermes peer run coder "research done: <summary>, continue"` — and the worst
+a *compromised* researcher can produce is a **tested branch awaiting your
+merge**. The ceiling is set by the coder's jail + allowlist, not by trusting
+the researcher.
+
+**The credential caveat.** `peer` requires the sender to hold the receiver's
+`API_SERVER_KEY` (stored in the sender's `~/.hermes/.env`). A web-compromised
+researcher holding the coder's key is a hostile sender with a live credentialed
+channel — which is exactly why the coder's jail + approvals are the wall, not
+the peer auth.
+
+**Prefer pull over push.** To remove the credential exposure entirely, flip
+the direction: the coder (more trusted) holds the researcher's key and *polls*
+`research-out` / a scoped board for "done," then self-triggers. The untrusted
+researcher then holds **no credential to the coder at all** — same
+semi-autonomy, strictly smaller blast radius.
+
 ## Phases (mirroring the installer's choices)
 
 **Phase 1 — the core jail + compartments (this aspect).** Declare
