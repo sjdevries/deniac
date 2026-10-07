@@ -1,13 +1,28 @@
-# Tests for `ai.hermes` — shape tests only, matching the other Home Manager
-# aspects (ai.dsh, ai.unsloth-desktop): deniac has no home-manager flake
-# input, so the jail derivation is verified by building it in a real Home
-# Manager eval downstream, not here. What we CAN assert: the aspect exports
-# with a homeManager class and no nixos class (the jail is per-user state).
+# Tests for `ai.hermes`.
+#
+# The shape test (namespace export) matches the other Home Manager aspects.
+# The substantive tests exercise the pure jail/config logic in
+# ../../lib/hermes-jail.nix directly with a real `pkgs` and a plain
+# profile attrset — so the SECURITY-CRITICAL properties are asserted, not
+# just "a homeManager function exists":
+#
+#   * default-deny: the generated bwrap jail does NOT bind the real home
+#     read-write (the old `--bind "$HOME" "$HOME"` is gone).
+#   * the agent's HOME is its profile `home/` dir, not the real home.
+#   * declared bind dirs appear; the per-profile `-p <name>` is baked in.
+#   * the munix launcher maps network="none" to `--no-network` and wires
+#     the closure + virtiofs binds.
+#   * the declared config renders mcp_servers + settings.
+#
+# Full home-manager activation (the merge actually running against a live
+# ~/.hermes) is verified downstream at switch time, as with the other
+# homeManager aspects.
 
 { denTest, ... }:
 {
   flake.tests.ai-hermes = {
 
+    # ── shape: namespace export ──────────────────────────────────────
     test-namespace-export = denTest (
       { inputs, den, deniac, igloo, ... }:
       {
@@ -23,6 +38,133 @@
           hasDescription = true;
           hasHomeManagerClass = true;
           hasNixosClass = false;
+        };
+      }
+    );
+
+    # ── bwrap tier: DEFAULT-DENY bind ────────────────────────────────
+    test-bwrap-default-deny = denTest (
+      { inputs, den, deniac, ... }:
+      let
+        pkgs = import inputs.nixpkgs { system = "x86_64-linux"; };
+        hj = import ../../lib/hermes-jail.nix { inherit (pkgs) lib; };
+        profile = {
+          tier = "bwrap";
+          bindReadonly = [ ];
+          bindReadwrite = [ "/home/tux/research-out" ];
+          mcpServers = { };
+          settings = { };
+          soul = null;
+          network = "full";
+          gpu = false;
+          munixPackage = null;
+          munixClosure = null;
+          extraPackages = [ ];
+          env = { };
+        };
+        jail = builtins.readFile
+          (hj.mkBwrapJail pkgs pkgs.hello "researcher" profile) + "/bin/hermes-jailed-researcher";
+      in
+      {
+        expr = {
+          # the real home is NOT bound read-write (neither bare nor braced form)
+          noRealHomeBind =
+            !(pkgs.lib.strings.isInfixOf ''--bind "$HOME"'' jail)
+            && !(pkgs.lib.strings.isInfixOf ''--bind "''${HOME}"'' jail);
+          # the profile home IS bound, and HOME points inside it
+          bindsProfileHome = pkgs.lib.strings.isInfixOf ''--bind "$PH" "$PH"'' jail;
+          homeIsProfileHome = pkgs.lib.strings.isInfixOf ''--setenv HOME "$PH/home"'' jail;
+          # the declared workspace is bound; the per-profile -p is baked in
+          bindsDeclared = pkgs.lib.strings.isInfixOf "/home/tux/research-out" jail;
+          runsDashP = pkgs.lib.strings.isInfixOf "hermes -p researcher" jail;
+        };
+        expected = {
+          noRealHomeBind = true;
+          bindsProfileHome = true;
+          homeIsProfileHome = true;
+          bindsDeclared = true;
+          runsDashP = true;
+        };
+      }
+    );
+
+    # ── munix tier: --no-network posture + closure + binds ───────────
+    test-munix-no-network = denTest (
+      { inputs, den, deniac, ... }:
+      let
+        pkgs = import inputs.nixpkgs { system = "x86_64-linux"; };
+        hj = import ../../lib/hermes-jail.nix { inherit (pkgs) lib; };
+        profile = {
+          tier = "munix";
+          bindReadonly = [ "/home/tux/work/myrepo" ];
+          bindReadwrite = [ ];
+          mcpServers = { };
+          settings = { };
+          soul = null;
+          network = "none";
+          gpu = false;
+          munixPackage = pkgs.hello; # stub for the munix binary path
+          munixClosure = "/nix/store/fake-reviewer-toplevel";
+          extraPackages = [ ];
+          env = { };
+        };
+        launcher = builtins.readFile
+          (hj.mkMunixLauncher pkgs pkgs.hello "reviewer" profile) + "/bin/hermes-munix-reviewer";
+      in
+      {
+        expr = {
+          hasNoNetwork = pkgs.lib.strings.isInfixOf "--no-network" launcher;
+          hasNoGpu = pkgs.lib.strings.isInfixOf "--no-gpu" launcher;
+          hasClosure = pkgs.lib.strings.isInfixOf "/nix/store/fake-reviewer-toplevel" launcher;
+          roBindsRepo = pkgs.lib.strings.isInfixOf "--ro-bind /home/tux/work/myrepo" launcher;
+          runsDashP = pkgs.lib.strings.isInfixOf "hermes -p reviewer" launcher;
+        };
+        expected = {
+          hasNoNetwork = true;
+          hasNoGpu = true;
+          hasClosure = true;
+          roBindsRepo = true;
+          runsDashP = true;
+        };
+      }
+    );
+
+    # ── declared config renders tools + settings ─────────────────────
+    test-declared-config = denTest (
+      { inputs, den, deniac, ... }:
+      let
+        pkgs = import inputs.nixpkgs { system = "x86_64-linux"; };
+        hj = import ../../lib/hermes-jail.nix { inherit (pkgs) lib; };
+        profile = {
+          tier = "bwrap";
+          bindReadonly = [ ];
+          bindReadwrite = [ ];
+          mcpServers = {
+            donsetch = { command = "donsetch"; args = [ "serve" ]; env = { FOO = "bar"; }; };
+          };
+          settings = { model = { default = "test-model"; }; };
+          soul = null;
+          network = "full";
+          gpu = false;
+          munixPackage = null;
+          munixClosure = null;
+          extraPackages = [ ];
+          env = { };
+        };
+        cfgJson = hj.declaredConfig "researcher" profile;
+      in
+      {
+        expr = {
+          hasMcp = pkgs.lib.strings.isInfixOf "donsetch" cfgJson;
+          hasArgs = pkgs.lib.strings.isInfixOf "serve" cfgJson;
+          hasEnv = pkgs.lib.strings.isInfixOf "FOO" cfgJson;
+          hasSetting = pkgs.lib.strings.isInfixOf "test-model" cfgJson;
+        };
+        expected = {
+          hasMcp = true;
+          hasArgs = true;
+          hasEnv = true;
+          hasSetting = true;
         };
       }
     );
