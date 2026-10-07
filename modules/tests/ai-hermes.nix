@@ -19,6 +19,15 @@
 # homeManager aspects.
 
 { denTest, ... }:
+let
+  # This nixpkgs has no lib.strings.isInfixOf — use builtins.match with the
+  # needle's regex metacharacters escaped and [\s\S]* to span newlines.
+  escapeRegex = builtins.replaceStrings
+    [ "\\" "." "*" "+" "?" "[" "]" "(" ")" "{" "}" "^" "$" "|" ]
+    [ "\\\\" "\\." "\\*" "\\+" "\\?" "\\[" "\\]" "\\(" "\\)" "\\{" "\\}" "\\^" "\\$" "\\|" ];
+  has = needle: hay:
+    builtins.match ("[\\s\\S]*" + escapeRegex needle + "[\\s\\S]*") hay != null;
+in
 {
   flake.tests.ai-hermes = {
 
@@ -69,14 +78,14 @@
         expr = {
           # the real home is NOT bound read-write (neither bare nor braced form)
           noRealHomeBind =
-            !(pkgs.lib.strings.isInfixOf ''--bind "$HOME"'' jail)
-            && !(pkgs.lib.strings.isInfixOf ''--bind "''${HOME}"'' jail);
+            !(has ''--bind "$HOME"'' jail)
+            && !(has ''--bind "''${HOME}"'' jail);
           # the profile home IS bound, and HOME points inside it
-          bindsProfileHome = pkgs.lib.strings.isInfixOf ''--bind "$PH" "$PH"'' jail;
-          homeIsProfileHome = pkgs.lib.strings.isInfixOf ''--setenv HOME "$PH/home"'' jail;
+          bindsProfileHome = has ''--bind "$PH" "$PH"'' jail;
+          homeIsProfileHome = has ''--setenv HOME "$PH/home"'' jail;
           # the declared workspace is bound; the per-profile -p is baked in
-          bindsDeclared = pkgs.lib.strings.isInfixOf "/home/tux/research-out" jail;
-          runsDashP = pkgs.lib.strings.isInfixOf "hermes -p researcher" jail;
+          bindsDeclared = has "/home/tux/research-out" jail;
+          runsDashP = has "hermes -p researcher" jail;
         };
         expected = {
           noRealHomeBind = true;
@@ -113,11 +122,11 @@
       in
       {
         expr = {
-          hasNoNetwork = pkgs.lib.strings.isInfixOf "--no-network" launcher;
-          hasNoGpu = pkgs.lib.strings.isInfixOf "--no-gpu" launcher;
-          hasClosure = pkgs.lib.strings.isInfixOf "/nix/store/fake-reviewer-toplevel" launcher;
-          roBindsRepo = pkgs.lib.strings.isInfixOf "--ro-bind /home/tux/work/myrepo" launcher;
-          runsDashP = pkgs.lib.strings.isInfixOf "hermes -p reviewer" launcher;
+          hasNoNetwork = has "--no-network" launcher;
+          hasNoGpu = has "--no-gpu" launcher;
+          hasClosure = has "/nix/store/fake-reviewer-toplevel" launcher;
+          roBindsRepo = has "--ro-bind /home/tux/work/myrepo" launcher;
+          runsDashP = has "hermes -p reviewer" launcher;
         };
         expected = {
           hasNoNetwork = true;
@@ -155,10 +164,10 @@
       in
       {
         expr = {
-          hasMcp = pkgs.lib.strings.isInfixOf "donsetch" cfgJson;
-          hasArgs = pkgs.lib.strings.isInfixOf "serve" cfgJson;
-          hasEnv = pkgs.lib.strings.isInfixOf "FOO" cfgJson;
-          hasSetting = pkgs.lib.strings.isInfixOf "test-model" cfgJson;
+          hasMcp = has "donsetch" cfgJson;
+          hasArgs = has "serve" cfgJson;
+          hasEnv = has "FOO" cfgJson;
+          hasSetting = has "test-model" cfgJson;
         };
         expected = {
           hasMcp = true;
