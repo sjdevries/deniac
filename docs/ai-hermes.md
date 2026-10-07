@@ -1,11 +1,77 @@
-# deniac.ai.hermes — Hermes Agent in a bubblewrap jail
+# deniac.ai.hermes — Hermes Agent in role-compartment jails
 
 [Hermes Agent](https://github.com/NousResearch/hermes-agent) (Nous
 Research, **MIT**) is a self-improving agent: persistent memory, skills it
 writes from experience, a mutable `~/.hermes` state directory. This
-aspect runs it inside a [bubblewrap](https://github.com/containers/bubblewrap)
-jail — daemonless, rootless, no sudo — where the host system is read-only
-and the user's home is the workspace.
+aspect runs it in **role compartments** — least-privilege profiles
+(researcher / coder / reviewer / creator) — each enforced by either
+[bubblewrap](https://github.com/containers/bubblewrap) (a daemonless,
+rootless mount-namespace jail) or [munix](https://git.clan.lol/clan/munix)
+(a KVM microVM).
+
+## The security model: remove the capability, not the attack
+
+Prompt injection is a **confused-deputy** attack. The agent is tricked by
+text it reads (a web page, a repo file, an MCP response) into doing
+something you didn't ask for. You cannot reliably *detect* the malicious
+text — it looks like any other text. But you can **remove or bound the
+capability**, so a compartment simply cannot touch what it was never given.
+
+The model is three strategies, matched to each role:
+
+| Role | Threat | Strategy | Compartment |
+| --- | --- | --- | --- |
+| **researcher** | reads untrusted web, may be injected | **remove** — no secrets, no push | web tools only; writes to a `research-out` dir; cannot read `~/.ssh`/`~/.aws` |
+| **coder** | edits a repo, may be injected | **keep-away** — scoped to the repo | repo rw; git creds via env; no other home access |
+| **reviewer** | reads untrusted code, must not leak | **contain** — no egress | repo ro; `network = "none"` |
+| **creator** | runs ComfyUI custom nodes (arbitrary code) | **contain** — microVM | GPU microVM; store ro / output rw / no secrets |
+
+**Handoff is a data diode.** A researcher's output lands in a directory a
+*human* reviews before it reaches a privileged compartment. Never
+researcher → coder directly; the human is the gate.
+
+## Two enforcement tiers (compose, don't compete)
+
+Match the tier to the threat. They are not alternatives to choose between
+globally — each profile picks its tier.
+
+| | **bwrap** (Tier A) | **munix** (Tier B) |
+|---|---|---|
+| Boundary | mount namespace (shared kernel) | KVM microVM (separate guest kernel) |
+| Stops | confused-deputy (filesystem capability) | + jail-escape vs a compromised tool/MCP server |
+| Network | all-or-nothing (`--unshare-net` cuts localhost too) | per-VM: `--no-network` is a clean boundary |
+| Cost | near-zero | KVM + a guest closure |
+
+`tier = "bwrap"` is the default and is sufficient for the confused-deputy
+threat. `tier = "munix"` adds kernel isolation and a clean per-VM network
+boundary when a tool/MCP server itself may be hostile.
+
+> **Caveats (honest scope).** These compartments defeat the
+> confused-deputy / prompt-injection threat. They do **not** defeat a
+> kernel exploit or a compromised supply chain (a malicious package in the
+> closure runs with whatever the closure has). Granting an MCP server is
+> granting its capability — a tool with network + a secret can exfiltrate
+> regardless of the jail around the *agent*. Bound the tool, not just the
+> agent.
+
+## The default-deny crux
+
+The single most important property: **the real home is never bound.** The
+old single-jail model bound `$HOME` read-write and added knobs — which
+meant a "researcher" could still read `~/.ssh`, `~/.aws`, and browser
+profiles. The compartment model flips this to a **default-deny bind
+allowlist**:
+
+- The agent's `HOME` is its own profile `home/` dir (inside the bound
+  profile directory), **not** the real home.
+- `XDG_RUNTIME_DIR` points at the tmpfs `/tmp`, so the agent gets a
+  fresh runtime dir instead of the real session sockets (wayland/pulse).
+- Every path the agent may touch is declared in `bindReadonly` /
+  `bindReadwrite`. Everything else — the rest of the real home, sibling
+  profiles — is simply absent inside the jail.
+
+This is asserted in the test suite (`test-bwrap-default-deny`), not just
+documented.
 
 ## Reproducibility model: configuration vs. experience
 
@@ -14,11 +80,13 @@ hash-pinned) versus **what the agent LEARNED** (mutable, backed up):
 
 | Tier | Contents | Fate |
 | --- | --- | --- |
-| **Declared** | hermes package, jail wrapper, `extraPackages` | `nix build` — reproducible from the flake |
-| **Mutable** | `~/.hermes` — sessions, skills, memories, `config.yaml`, the agent's own `venv/` | **Back it up** like precious-bulk weights; never rebuilt |
+| **Declared** | hermes package, jail wrappers, per-profile `config.yaml` (tools/settings) + `SOUL.md`, bind allowlists | `nix build` — reproducible from the flake |
+| **Mutable** | `~/.hermes/profiles/<name>/` — sessions, skills, memories, the agent's own learned config keys | **Back it up** like precious-bulk weights; never rebuilt |
 
-The agent's mutable layer is its *experience*, not its configuration.
-A fresh host + the flake + a restored `~/.hermes` = the same agent.
+Declared config is merged over the agent's learned `config.yaml` with a
+**preserve-learned-keys** merge (declared keys win; learned keys are
+kept). So you can declare a compartment's tools and persona without
+clobbering what the agent has learned in it.
 
 ## Why bubblewrap, not the upstream podman container
 
@@ -26,55 +94,107 @@ The upstream NixOS module's container mode runs the container **as root**
 (its own docs: "Podman's rootful containers require sudo"). Rootless
 podman is not a configuration of that module — it contradicts it — and
 on this fleet the sudoless path failed completely (and the sudo
-compromise too). Bubblewrap delivers the same jail properties with none
-of that:
+compromise too). Bubblewrap delivers the jail with none of that:
 
-| | upstream container mode | this jail |
+| | upstream container mode | bwrap tier |
 |---|---|---|
 | Daemon | podman/dockerd | none |
 | Privilege | root (sudo for CLI) | your user |
 | Image | Ubuntu base | none (Nix store) |
-| Agent can extend itself | yes (container fs) | yes (`~/.hermes/venv`) |
-| Host protection | container boundary | mount namespace, system ro |
+| Host protection | container boundary | mount namespace, system ro, default-deny home |
 
-**Isolation model:** the jail protects the *system* from the agent — no
-writes outside the user's home, no root, no host state. The user's own
-`~/.hermes` and declared project dirs are deliberately read-write:
-that's the agent's workspace, by design.
+## Options
 
-## The jail
+Top level:
 
-`hermes-jailed` is a `bwrap` wrapper:
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `enable` | bool | `false` | Install the compartmentalized jails |
+| `package` | package | `llm-agents` `hermes-agent` (existing pin — same input that provides dsh) | The hermes build |
+| `profiles` | attrs of profile | `{}` | The role compartments (below) |
 
-- **Read-only:** `/nix/store`, `/etc`, `/run/current-system/sw`,
-  `XDG_RUNTIME_DIR` (sockets), plus any `extraReadonlyDirs`
-- **Read-write:** the user's `$HOME` (contains `~/.hermes`), plus
-  `extraReadwriteDirs` (project workspace beyond home)
-- **Fresh:** `tmpfs /tmp`, new PID namespace, new session, `LD_PRELOAD`
-  stripped
-- **PATH:** hermes + `extraPackages` + `~/.hermes/venv/bin` (last —
-  the agent's own learned tool layer wins)
+Each profile (`profiles.<name>`):
+
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `tier` | `"bwrap"` \| `"munix"` | `"bwrap"` | Enforcement tier |
+| `bindReadonly` | [str] | `[]` | Host dirs bound read-only |
+| `bindReadwrite` | [str] | `[]` | Host dirs bound read-write (the compartment's workspace) |
+| `mcpServers` | attrs | `{}` | The compartment's tools, rendered to `config.yaml` `mcp_servers` |
+| `settings` | attrs | `{}` | Extra behavioral keys merged into `config.yaml` |
+| `soul` | nullOr str | `null` | Persona rendered to `SOUL.md` (null = leave the agent's own) |
+| `network` | `"full"` \| `"none"` | `"full"` | munix egress posture (`none` → `--no-network`) |
+| `gpu` | bool | `false` | munix: pass GPU through |
+| `munixPackage` | nullOr package | `null` | munix runner (consumer-provided; deniac doesn't pin libkrun/KVM) |
+| `munixClosure` | nullOr str | `null` | the NixOS toplevel the microVM boots |
+| `extraPackages` | [package] | `[]` | Extra PATH packages |
+| `env` | attrs | `{}` | Extra env vars in the compartment |
+
+Each profile generates a launcher: `hermes-jailed-<name>` (bwrap) or
+`hermes-munix-<name>` (munix), and renders its declared `config.yaml` +
+`SOUL.md` into `~/.hermes/profiles/<name>/` at activation.
+
+## Usage
+
+```nix
+den.aspects.tux.includes = [ deniac.ai.hermes ];
+den.aspects.tux.homeManager.deniac.ai.hermes = {
+  enable = true;
+
+  profiles = {
+    # Reads the web, gets injected, has nothing to steal.
+    researcher = {
+      bindReadwrite = [ "/home/tux/research-out" ];   # its only write target
+      mcpServers.donsetch.command = "donsetch";
+      soul = "You are a research assistant. No secrets, no push.";
+    };
+
+    # Edits one repo. Git creds via env; nothing else from home.
+    coder = {
+      bindReadwrite = [ "/home/tux/work/myrepo" ];
+      env.GIT_SSH_COMMAND = "ssh -i /home/tux/.ssh/deploy_key";
+    };
+
+    # Reads untrusted code, must not leak. MicroVM, no network.
+    reviewer = {
+      tier = "munix";
+      network = "none";
+      bindReadonly = [ "/home/tux/work/myrepo" ];
+      munixPackage = inputs.munix.packages.x86_64-linux.munix;
+      munixClosure = "/nix/store/...-reviewer-toplevel";
+    };
+  };
+};
+```
+
+Then `hermes-jailed-researcher …`, `hermes-jailed-coder …`,
+`hermes-munix-reviewer …`. The researcher's `research-out` is reviewed
+by a human before anything in it reaches the coder — the data diode.
+
+**Runtime tuning.** bwrap jails need one round of missing-mount tuning per
+agent version. Start strict (default-deny); if hermes reports a missing
+path, add it to that profile's `bindReadonly`/`bindReadwrite` and bake it
+into the default.
 
 ## Phases (mirroring the installer's choices)
 
-**Phase 1 — the core jail (this aspect).** Install, run
-`hermes-jailed`, configure the model in the agent's own
-`~/.hermes/config.yaml` (mutable tier). Point it at local models:
-`model.base_url = "http://127.0.0.1:8731/v1"` (gufo/halogen
-OpenAI-compatible endpoints) or OpenRouter; keys via `env`/secrets —
-never in Nix store values.
+**Phase 1 — the core jail + compartments (this aspect).** Declare
+profiles, run the launchers, configure models in the rendered
+`config.yaml` (or point at local models:
+`model.base_url = "http://127.0.0.1:8731/v1"` — gufo/halogen
+OpenAI-compatible endpoints — or OpenRouter; keys via `env`/secrets,
+never in Nix store values).
 
-**Phase 2 — the gateway as a systemd user service.** `hermes-jailed`
-running the messaging gateway under Home Manager's `systemd.user.services`
-with lingering: survives logout, restarts on failure, Telegram/Discord/
-Slack in.
+**Phase 2 — the gateway as a systemd user service.** Run a compartment's
+gateway under Home Manager's `systemd.user.services` with lingering:
+survives logout, restarts on failure, Telegram/Discord/Slack in.
 
 **Phase 3 — memory providers.** [MemPalace](https://github.com/mempalace/mempalace)
 (MIT, local, ChromaDB-backed) ships as an MCP server, so one palace
 serves both harnesses: Hermes via its `mcpServers` config, dsh via
-`dsh-mcp-client`. The [hermes-mempalace](https://github.com/kjames2001/hermes-mempalace)
-native provider (`memory.provider = mempalace`) is the deeper
-integration — declared into the agent env when wanted.
+`dsh-mcp-client`. Note the security caveat: a shared memory provider is a
+channel between compartments — treat cross-compartment memory as a
+handoff that needs the same human gate as files.
 
 **TTS — deliberately out of scope.** Audio stories (sci-fi narrations,
 YouTube content) belong in **ComfyUI workflows** (ACE-Step and friends —
@@ -86,40 +206,27 @@ expressions riding nixpkgs' `torch`/`torchaudio`/`transformers`/
 pip-install into the mutable layer for configuration; that tier is for
 experience only.
 
-## Options
-
-| Option | Type | Default | Meaning |
-| --- | --- | --- | --- |
-| `enable` | bool | `false` | Install `hermes-jailed` |
-| `package` | package | `llm-agents` `hermes-agent` (existing pin — same input that provides dsh) | The hermes build |
-| `extraPackages` | [package] | `[]` | Extra jail PATH packages |
-| `extraReadonlyDirs` | [str] | `[]` | Extra ro binds |
-| `extraReadwriteDirs` | [str] | `[]` | Extra rw binds (project workspace) |
-| `env` | attrs | `{}` | Extra env vars in the jail |
-
-## Usage
-
-```nix
-den.aspects.tux.includes = [ deniac.ai.hermes ];
-den.aspects.tux.homeManager.deniac.ai.hermes = {
-  enable = true;
-  extraReadwriteDirs = [ "/home/tux/projects" ];
-  env = { CAMOFOX_URL = "http://localhost:9337"; };
-};
-```
-
 ## Provenance
 
 - Agent: [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent)
   (MIT), packaged via [numtide/llm-agents.nix](https://github.com/numtide/llm-agents.nix)
   `packages/hermes-agent` — from the **existing** deniac `llm-agents`
   pin (no new input).
-- Jail pattern: informed by [andersonjoseph/jailed-agents](https://github.com/andersonjoseph/jailed-agents)
-  (community-first survey; current upstream API too minimal for the
-  fleet's needs, so the wrapper is hand-rolled) and the fleet's prior
-  `jailed-hermes.nix` experiments.
+- bwrap jail pattern: informed by [andersonjoseph/jailed-agents](https://github.com/andersonjoseph/jailed-agents)
+  (community-first survey) and prior jail experiments; the wrapper is
+  hand-rolled because the current upstream API is too minimal for the
+  compartment model.
+- munix tier: [Clan munix](https://git.clan.lol/clan/munix) (muvm /
+  libkrun), consumed as a consumer-provided package (`munixPackage`),
+  not pinned in deniac.
 
 ## Tests
 
 `nix run nixpkgs#nix-unit -- --flake .#.tests.ai-hermes --impure` —
-namespace export, homeManager-class-only shape.
+4 tests: namespace export (homeManager-class-only shape); **bwrap
+default-deny** (real home not bound, profile-home `HOME`, declared binds
+present, `-p <name>` baked in); **munix posture** (`--no-network`,
+closure + virtiofs binds); **declared config** renders `mcp_servers` +
+settings. The pure jail/config logic lives in `lib/hermes-jail.nix`
+(outside `modules/` so import-tree won't load it as an aspect) and is
+unit-tested directly.
