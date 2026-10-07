@@ -20,13 +20,12 @@
 
 { denTest, ... }:
 let
-  # This nixpkgs has no lib.strings.isInfixOf — use builtins.match with the
-  # needle's regex metacharacters escaped and [\s\S]* to span newlines.
-  escapeRegex = builtins.replaceStrings
-    [ "\\" "." "*" "+" "?" "[" "]" "(" ")" "{" "}" "^" "$" "|" ]
-    [ "\\\\" "\\." "\\*" "\\+" "\\?" "\\[" "\\]" "\\(" "\\)" "\\{" "\\}" "\\^" "\\$" "\\|" ];
+  # Pure substring check (no regex): remove the needle; if the string got
+  # shorter, it was present. Avoids this nixpkgs's missing
+  # lib.strings.isInfixOf and the POSIX-ERE dotall trap.
   has = needle: hay:
-    builtins.match ("[\\s\\S]*" + escapeRegex needle + "[\\s\\S]*") hay != null;
+    builtins.stringLength (builtins.replaceStrings [ needle ] [ "" ] hay)
+    < builtins.stringLength hay;
 in
 {
   flake.tests.ai-hermes = {
@@ -72,7 +71,7 @@ in
           env = { };
         };
         jail = builtins.readFile
-          (hj.mkBwrapJail pkgs pkgs.hello "researcher" profile) + "/bin/hermes-jailed-researcher";
+          ((hj.mkBwrapJail pkgs pkgs.hello "researcher" profile) + "/bin/hermes-jailed-researcher");
       in
       {
         expr = {
@@ -118,7 +117,7 @@ in
           env = { };
         };
         launcher = builtins.readFile
-          (hj.mkMunixLauncher pkgs pkgs.hello "reviewer" profile) + "/bin/hermes-munix-reviewer";
+          ((hj.mkMunixLauncher pkgs pkgs.hello "reviewer" profile) + "/bin/hermes-munix-reviewer");
       in
       {
         expr = {
