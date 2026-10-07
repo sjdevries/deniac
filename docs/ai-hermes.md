@@ -42,9 +42,47 @@ globally — each profile picks its tier.
 | Network | all-or-nothing (`--unshare-net` cuts localhost too) | per-VM: `--no-network` is a clean boundary |
 | Cost | near-zero | KVM + a guest closure |
 
-`tier = "bwrap"` is the default and is sufficient for the confused-deputy
-threat. `tier = "munix"` adds kernel isolation and a clean per-VM network
-boundary when a tool/MCP server itself may be hostile.
+**`tier = "munix"` is the default — the target.** The Nix³OS model puts
+every agent compartment in a Tier-1 microVM: a uniform strong boundary
+(separate guest kernel) with a per-VM routable network. **`tier =
+"bwrap"` is the fallback** — for hosts without KVM / nested virt, or a
+compartment you deliberately want lighter.
+
+The honest nuance: bwrap + the default-deny allowlist *already* defeats
+the confused-deputy / prompt-injection threat — the agent can't touch
+what it wasn't given, injected or not. munix doesn't make the *injection*
+defense stronger; it adds **jail-escape containment** against a
+compromised tool/MCP server, plus the per-VM network. "Always munix" is
+the target (uniform boundary + per-VM egress), not a strict requirement
+for the injection threat alone. "Don't over-stack" means don't run
+bwrap+munix+nono when one boundary suffices — not "don't use munix."
+
+## Model routing (the always-munix crux)
+
+Every compartment needs the model, but a microVM guest can't reach the
+host's `127.0.0.1`. The aspect does **not** hardcode the routing — each
+profile declares `settings.model.base_url`, and the launcher never
+touches the model. That single declared knob is the seam that lets the
+topology change without a re-architecture: **today the model is local**
+(same box, reached over the VM tap); **the intent is to break it apart**
+onto a separate LLM machine reached over netbird/VPN. Same `base_url`
+option, different value:
+
+| Topology | `model.base_url` | Notes |
+| --- | --- | --- |
+| **Local today** — host model, VM-bridge tap | `http://<host-tap-ip>:8731/v1` | one model serves all VMs; tap firewall gates who reaches it |
+| **Break-apart later** — separate LLM box over netbird/VPN | `http://<netbird-host>:8731/v1` | the model host is just another allowlisted egress destination — same class as "internet" or "git remote" |
+| Model bundled in-VM | `http://127.0.0.1:8731/v1` | cleanest isolation; a model per VM (heavy) |
+
+The netbird/VPN target is the cleanest fit for the egress model: the
+model host is a declared destination on the per-VM tap firewall, exactly
+like the researcher's internet or the coder's git remote. The
+fine-grained per-VM egress (model-host yes / internet maybe / git only)
+is enforced by the **host-level tap firewall** over munix's virtio-net —
+not by the launcher. The launcher's `network` flag is coarse:
+`"none"` → `--no-network` is a *total* boundary (cuts the model too, so
+use it only with an in-VM model); `"full"` + a tap rule gives
+"model yes / internet no" for the reviewer.
 
 > **Caveats (honest scope).** These compartments defeat the
 > confused-deputy / prompt-injection threat. They do **not** defeat a
@@ -117,7 +155,7 @@ Each profile (`profiles.<name>`):
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `tier` | `"bwrap"` \| `"munix"` | `"bwrap"` | Enforcement tier |
+| `tier` | `"bwrap"` \| `"munix"` | `"munix"` | Enforcement tier (munix = target; bwrap = fallback for non-KVM hosts) |
 | `bindReadonly` | [str] | `[]` | Host dirs bound read-only |
 | `bindReadwrite` | [str] | `[]` | Host dirs bound read-write (the compartment's workspace) |
 | `mcpServers` | attrs | `{}` | The compartment's tools, rendered to `config.yaml` `mcp_servers` |
@@ -141,35 +179,53 @@ den.aspects.tux.includes = [ deniac.ai.hermes ];
 den.aspects.tux.homeManager.deniac.ai.hermes = {
   enable = true;
 
+  # The model base_url is the seam: local today, a separate netbird LLM
+  # box later — same knob, different value.
   profiles = {
-    # Reads the web, gets injected, has nothing to steal.
+    # Reads the web, gets injected, has nothing to steal. munix by default.
     researcher = {
+      munixPackage = inputs.munix.packages.x86_64-linux.munix;
+      munixClosure = "/nix/store/...-researcher-toplevel";
       bindReadwrite = [ "/home/tux/research-out" ];   # its only write target
       mcpServers.donsetch.command = "donsetch";
+      settings.model.base_url = "http://100.64.0.1:8731/v1";  # local today
       soul = "You are a research assistant. No secrets, no push.";
     };
 
     # Edits one repo. Git creds via env; nothing else from home.
     coder = {
+      munixPackage = inputs.munix.packages.x86_64-linux.munix;
+      munixClosure = "/nix/store/...-coder-toplevel";
       bindReadwrite = [ "/home/tux/work/myrepo" ];
       env.GIT_SSH_COMMAND = "ssh -i /home/tux/.ssh/deploy_key";
+      settings.model.base_url = "http://100.64.0.1:8731/v1";
     };
 
-    # Reads untrusted code, must not leak. MicroVM, no network.
+    # Reads untrusted code, must not leak. No internet; reaches the model
+    # over the tap (network="full" + a host tap rule: model yes, internet
+    # no). Use network="none" only if the model is bundled in-VM.
     reviewer = {
-      tier = "munix";
-      network = "none";
-      bindReadonly = [ "/home/tux/work/myrepo" ];
       munixPackage = inputs.munix.packages.x86_64-linux.munix;
       munixClosure = "/nix/store/...-reviewer-toplevel";
+      network = "full";
+      bindReadonly = [ "/home/tux/work/myrepo" ];
+      settings.model.base_url = "http://100.64.0.1:8731/v1";
+    };
+
+    # A deliberately-lighter compartment opts into the bwrap fallback
+    # (e.g. a host without KVM, or a trusted local-only task).
+    trusted-local = {
+      tier = "bwrap";
+      bindReadwrite = [ "/home/tux/work/trusted" ];
     };
   };
 };
 ```
 
-Then `hermes-jailed-researcher …`, `hermes-jailed-coder …`,
-`hermes-munix-reviewer …`. The researcher's `research-out` is reviewed
-by a human before anything in it reaches the coder — the data diode.
+Then `hermes-munix-researcher …`, `hermes-munix-coder …`,
+`hermes-munix-reviewer …`, `hermes-jailed-trusted-local …`. The
+researcher's `research-out` is reviewed by a human before anything in it
+reaches the coder — the data diode.
 
 **Runtime tuning.** bwrap jails need one round of missing-mount tuning per
 agent version. Start strict (default-deny); if hermes reports a missing

@@ -87,12 +87,15 @@
         options = {
           tier = lib.mkOption {
             type = lib.types.enum [ "bwrap" "munix" ];
-            default = "bwrap";
+            default = "munix";
             description = ''
-              Enforcement tier. "bwrap" = a default-deny bubblewrap jail
-              (filesystem compartment). "munix" = a KVM microVM (needs
-              `munixPackage` + `munixClosure`); adds jail-escape
-              resistance and per-VM network posture.
+              Enforcement tier. The TARGET is a munix KVM microVM per
+              compartment (Nix³OS Tier 1): a separate guest kernel for
+              jail-escape containment plus a per-VM routable network.
+              "bwrap" is the FALLBACK — a default-deny bubblewrap jail
+              for hosts without KVM / nested virt, or a deliberately
+              lighter compartment. munix needs `munixPackage` +
+              `munixClosure`.
             '';
           };
 
@@ -151,10 +154,15 @@
             type = lib.types.enum [ "full" "none" ];
             default = "full";
             description = ''
-              Egress posture (munix tier). "none" → munix `--no-network`
-              (guest has no outbound — the reviewer boundary). "full" →
-              guest has network (researcher). Fine-grained egress
-              (git-remote-only) is declared inside the guest closure.
+              Coarse egress posture (munix tier). "none" → munix
+              `--no-network`: a TOTAL boundary — the guest has no outbound
+              at all, including no model. Use it only when the model is
+              bundled in-VM. "full" → the guest has network; the
+              FINE-GRAINED boundary (model-host yes / internet no /
+              git-remote only) is enforced by the host-level tap firewall
+              over the per-VM virtio-net, not by this flag. A reviewer
+              that reaches a VPN model host uses "full" + a tap rule that
+              allows the model host and drops the internet.
             '';
           };
 
