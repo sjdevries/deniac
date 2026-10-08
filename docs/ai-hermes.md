@@ -184,8 +184,11 @@ den.aspects.tux.homeManager.deniac.ai.hermes = {
   profiles = {
     # Reads the web, gets injected, has nothing to steal. munix by default.
     researcher = {
-      munixPackage = inputs.munix.packages.x86_64-linux.munix;
-      munixClosure = "/nix/store/...-researcher-toplevel";
+      # Both the runner and the closure come from ONE input — the
+      # templates/hermes-munix-guest flake (see "Where the closure comes
+      # from" below). They must be the same munix the guest was built with.
+      munixPackage = inputs.hermes-munix-guest.packages.x86_64-linux.munix;
+      munixClosure = toString inputs.hermes-munix-guest.packages.x86_64-linux.researcher-toplevel;
       bindReadwrite = [ "/home/tux/research-out" ];   # its only write target
       mcpServers.donsetch.command = "donsetch";
       settings.model.base_url = "http://100.64.0.1:8731/v1";  # local today
@@ -226,6 +229,37 @@ Then `hermes-munix-researcher …`, `hermes-munix-coder …`,
 `hermes-munix-reviewer …`, `hermes-jailed-trusted-local …`. The
 researcher's `research-out` is reviewed by a human before anything in it
 reaches the coder — the data diode.
+
+### Where the closure comes from (validated 2026-10-08)
+
+`munixClosure` is the **NixOS toplevel** the microVM boots — the VM's
+entire visible `/nix/store`. It is built by the
+`templates/hermes-munix-guest` flake, which exposes three outputs:
+
+| output | what it is |
+| --- | --- |
+| `researcher` | the wrapped `.munix` launcher (bakes `MICROVM_DEFAULT_COMMAND`) — run directly |
+| `researcher-toplevel` | the **raw toplevel** — what `munixClosure` points at |
+| `munix` | the runner binary the guest was built against (re-exposed so one input suffices) |
+
+The guest must be built with the **munix-pinned nixpkgs**
+(`nixpkgs.follows = "munix/nixpkgs"`), which is *not* the deniac main
+flake's nixpkgs — so the template stays a **separate flake**, and a
+consumer references its outputs rather than rebuilding the guest in the
+main eval. Pin that one input however you like:
+
+- **own repo** — publish `hermes-munix-guest` standalone; cleanest URL pin.
+- **subdir of deniac** — `git+https://…/deniac?ref=…&dir=templates/hermes-munix-guest`
+  (verify the `dir=` fetcher works for your Nix).
+- **local path** — `../deniac/templates/hermes-munix-guest` for dev
+  (pairs with `--override-input deniac ../deniac`); not a committable pin.
+
+**End-to-end validation** (this machine, KVM): the researcher closure
+boots, `hermes` resolves at `/run/current-system/sw/bin/hermes`
+(v0.21.3), and a host↔guest virtiofs bind round-trips a file. The
+generated `hermes-munix-<name>` launcher assembles `--no-network` /
+`--no-gpu` / `--ro-bind` / `--bind` exactly per the profile, guards an
+empty `munixClosure`, and `exec`s `munix … "$CLOSURE" hermes -p <name>`.
 
 **Runtime tuning.** bwrap jails need one round of missing-mount tuning per
 agent version. Start strict (default-deny); if hermes reports a missing
