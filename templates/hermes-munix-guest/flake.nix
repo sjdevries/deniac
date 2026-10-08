@@ -1,10 +1,16 @@
 # munix-guest — a PARAMETRIC microVM guest builder.
 #
-# THE CLOSURE IS THE POLICY (per app).
+# THE CLOSURE IS THE SYSTEM (per app).
 # A munix guest boots its OWN NixOS closure (boot.isContainer = true, erofs
-# root). The guest's /nix/store *is* this closure — it cannot see the host's
-# store, nor any other guest's store. So whatever a given app's closure lists
-# is that VM's entire visible universe. Minimal closure = minimal visibility.
+# root): its /run/current-system, PATH, and default package set are all this
+# closure. NOTE (verified 2026-10-08): the closure is a set of *symlinks* to
+# store paths — it does NOT contain /nix/store. The munix runner mounts the
+# HOST's whole /nix/store read-only (runner line 302, unconditional), so the
+# guest can see every host package. The closure scopes the guest's SYSTEM,
+# NOT its store visibility. (True store isolation — the guest seeing only its
+# own closure's paths — is the d2b "hardlink farm" model, which munix lacks.)
+# The real blast-radius limit is the separate kernel + the un-bound host
+# /home, /etc, /run (no user data, no secrets).
 #
 # This is the reusable foundation for sandboxing MANY desktop apps the same
 # way — not just Hermes. Each app gets its own closure via `mkGuest`:
@@ -23,7 +29,7 @@
 # the shared board is the confused-deputy surface. Cross-trust handoff is a
 # human gate, not kanban/peer automation.
 {
-  description = "Parametric munix microVM guest builder (closure = per-app store-visibility allowlist)";
+  description = "Parametric munix microVM guest builder (closure = per-app system definition; store is shared ro by munix)";
 
   # munix's binary cache — without it the guest closure builds from source.
   nixConfig = {
