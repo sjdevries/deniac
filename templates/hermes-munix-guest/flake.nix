@@ -113,6 +113,11 @@
           #   munixPackage = <munix>;
           #   munixClosure = toString inputs.<this>.packages.${system}.researcher-toplevel;
           researcher-toplevel = researcherGuest.config.system.build.toplevel;
+
+          # Re-expose the munix runner so a consumer needs only THIS one input
+          # for both the closure and the launcher binary (the runner is pinned
+          # to the same munix the guest was built against — they must match).
+          munix = munix.packages.${system}.munix;
         };
 
       # Instance #2 — the GPU pattern (Steam). Unfree, so left as the
