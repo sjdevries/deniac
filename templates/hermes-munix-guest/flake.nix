@@ -93,23 +93,35 @@
       # The reusable builder — other flakes: inputs.<this-flake>.lib.mkGuest { … }
       lib.mkGuest = mkGuest;
 
-      packages.${system} = {
-        # Instance #1 — the headless researcher: hermes, NO graphics.
-        researcher =
-          (mkGuest {
+      packages.${system} =
+        let
+          # Instance #1 — the headless researcher: hermes, NO graphics.
+          researcherGuest = mkGuest {
             app = hermes;
             graphics = false;
             defaultCommand = "hermes -p researcher";
-          }).config.system.build.munix;
+          };
+        in
+        {
+          # The wrapped launcher — bakes MICROVM_DEFAULT_COMMAND, run directly.
+          researcher = researcherGuest.config.system.build.munix;
 
-        # Instance #2 — the GPU pattern (Steam). Unfree, so left as the
-        # shape to copy rather than a built output:
-        #
-        # steam = (mkGuest {
-        #   app = nixpkgs.legacyPackages.${system}.steam;
-        #   graphics = true;
-        #   packages = [ ];   # + any game-specific libs
-        # }).config.system.build.munix;
-      };
+          # The RAW toplevel — the closure the deniac `ai.hermes` launcher's
+          # `munixClosure` points at (that launcher supplies its own
+          # `hermes -p <name>` + binds, so it wants the bare closure, not the
+          # baked launcher). A consumer flake wires it as:
+          #   munixPackage = <munix>;
+          #   munixClosure = toString inputs.<this>.packages.${system}.researcher-toplevel;
+          researcher-toplevel = researcherGuest.config.system.build.toplevel;
+        };
+
+      # Instance #2 — the GPU pattern (Steam). Unfree, so left as the
+      # shape to copy rather than a built output:
+      #
+      # steam = (mkGuest {
+      #   app = nixpkgs.legacyPackages.${system}.steam;
+      #   graphics = true;
+      #   packages = [ ];   # + any game-specific libs
+      # }).config.system.build.munix;
     };
 }
