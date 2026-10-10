@@ -107,9 +107,16 @@
       packages.${system} =
         let
           # Instance #1 — the headless researcher: hermes, NO graphics.
+          # packages → environment.systemPackages: on PATH in the guest
+          # AND pulled into the closure, so the erofs store slice grows to
+          # include them (auditable before boot). Read-only reach only:
+          #   git  = clone/fetch PUBLIC repos (no creds bound → can't push)
+          #   jq   = parse JSON (API responses, lockfiles, scraped data)
+          #   rg   = fast recursive search over cloned/research-out trees
           researcherGuest = mkGuest {
             app = hermes;
             graphics = false;
+            packages = [ pkgs.git pkgs.jq pkgs.ripgrep ];
             defaultCommand = "hermes -p researcher";
           };
 
