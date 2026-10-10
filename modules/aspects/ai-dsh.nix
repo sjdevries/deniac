@@ -6,8 +6,21 @@
 #
 # Provenance: the package is numtide/llm-agents.nix `packages/dsh`
 # (buildNpmPackage of @deepseek-ai/dsh, MIT). Pinned to commit 32f95b57
-# ("dsh: 0.1.5-rc.1 -> 0.1.5-rc.2") — a known-good version; `main` has
-# since moved to 0.2.0-rc.2, unverified against this fleet.
+# ("dsh: 0.1.5-rc.1 -> 0.1.5-rc.2") — a known-good version.
+#
+# 0.2.0 review (2026-10-10): STAY PINNED at 0.1.5-rc.2. 0.2.0-rc.2 is
+# npm `latest` but: (1) no CVEs addressed — 0 GitHub advisories on
+# @deepseek-ai/dsh, no security fixes in the 0.2.0 notes; (2) the 0.2.0
+# features are Desktop-app (macOS/Windows) + DeepSeek-account-model
+# oriented — nothing this headless/halogen CLI fleet uses; (3) it is
+# BROKEN here — dsh 0.1.6+ fails to start with
+# `node-addon-require-builtin unsupported: Unsupported/no-getter`
+# (llm-agents#9994, root NixOS/nixpkgs#565667, both still open). A
+# workaround exists (overrideAttrs postInstall substituting the
+# requireBuiltin shim with plain createRequire — confirmed on 0.2.0-rc.2)
+# but it's a brittle substituteInPlace on a bundled JS file. Revisit the
+# bump only when nixpkgs#565667 is fixed OR the workaround is merged
+# into llm-agents' dsh package itself.
 #
 # SCOPE (Phase 1): the package + settings.yaml ONLY. The dsh *profile* is an
 # npm-native pnpm/cordis workspace (`~/.dsh/profiles/web/{package.json,
