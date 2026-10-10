@@ -16,13 +16,25 @@ aspect:
   **no AMD container image**.
 - **The AMD path is a natively-compiled HIP/ROCm engine** produced by
   `setup.py` on your machine — **not packaged in nixpkgs**.
-- **gfx1151 (Strix Halo) is WIP** — owner-confirmed in
-  [Strata#612](https://github.com/Niko1221/Strata/issues/612):
-  *"gfx1151 support … is in progress: we're working on a port for it
-  now."* Until that lands, this aspect targets **discrete AMD GPUs
-  (gfx1100+)**, **not** the Halo. (On the Halo, the unified-memory
-  model makes Strata's VRAM↔RAM offload largely moot anyway — see the
-  contributor's note in that issue; gufo/halogen own that job.)
+- **gfx1151 (Strix Halo / Ryzen AI Max+) is experimental but
+  supported on Linux since Strata 0.1.40** — the Aurora port merged,
+  owner-confirmed in
+  [Strata#612](https://github.com/Niko1221/Strata/issues/612)
+  (2026-10-07): *"gfx1151 (Strix Halo) is admitted as experimental in
+  0.1.40 on Linux, with the Aurora port merged."* `setup.sh` recognizes
+  the chip by PCI id `1002:1586`, compiles the HIP engine for it on
+  Linux itself, treats the unified memory as one pool, and recommends
+  `UD-IQ4_XS` from ~80 GB. **No opt-in flag is needed** — the 18
+  speed switches turn themselves on for gfx1151
+  (`STRATA_GFX1151_DEFAULTS=0` disables them). Upstream
+  [`docs/STRIX_HALO.md`](https://github.com/Niko1221/Strata/blob/v0.1.42/docs/STRIX_HALO.md)
+  has the toolchain (TheRock ROCm 7.14.1, no root) and the manual
+  build. **0.1.41 added gfx1151 hipBLASLt tuning tables**
+  ([#1388](https://github.com/Niko1221/Strata/pull/1388)) and
+  `STRATA_PREFILL_STREAM_MIN=128` in the gfx1151 fast configuration
+  ([#1391](https://github.com/Niko1221/Strata/pull/1391)); **0.1.42
+  adds opt-in AMD/multi-GPU speedups** and fixes for Windows AMD and
+  tight-RAM machines. Windows Halo support is still pending (#918).
 
 So this aspect does **not** build or containerize the engine. It manages
 a systemd service around a Strata install you create out-of-band with
@@ -51,8 +63,12 @@ down `run-<model>.sh`), pointing at the shared store's GGUF:
 ```sh
 git clone https://github.com/Niko1221/Strata /opt/strata
 cd /opt/strata
+git checkout v0.1.42   # latest; gfx1151 (Strix Halo) support started in 0.1.40
 ./setup.sh --model IQ2_XS --gguf-dir /var/lib/ai-models/gguf --yes
 ```
+
+(On a Strix Halo box, let setup recommend `UD-IQ4_XS` instead of
+`IQ2_XS` — that's the pack measured for ≥80 GB unified memory.)
 
 **2. Enable the service:**
 
@@ -79,9 +95,11 @@ layer from these at setup time. A custom store `root` propagates.
 
 Strata's whole design is the **VRAM↔RAM↔SSD split** — which is exactly
 a discrete-GPU PC (e.g. an **AM4 + RX 7900 XTX**, gfx1100, with lots
-of system RAM), **not** the unified-memory Halo. That's where Strata
-shines and where this wrapper is meant to run. The Halo is the odd fit
-(hence the WIP port and the contributor's "use gufo" redirect).
+of system RAM). That's where Strata shines and where this wrapper is
+meant to run. The unified-memory Halo is the newer, **experimental**
+fit: admitted in 0.1.40 on Linux (see above), where the engine treats
+the GTT pool as the "VRAM" tier — gufo/halogen remain the settled
+Halo-native options.
 
 ## Provenance
 
@@ -91,8 +109,18 @@ README](https://github.com/Niko1221/Strata),
 (Docker = NVIDIA-only; AMD = compiled HIP/ROCm engine; `--gguf-dir`,
 `--port`, `--host`, `run-<model>.sh`), the `Dockerfile`
 (`FROM nvidia/cuda`), and [issue
-#612](https://github.com/Niko1221/Strata/issues/612) (gfx1151 WIP),
-retrieved 2026-10-04. The systemd service, service user, firewall
+#612](https://github.com/Niko1221/Strata/issues/612) (gfx1151 WIP →
+admitted experimental in 0.1.40 on Linux), retrieved 2026-10-04 and
+re-verified 2026-10-10 against the **v0.1.42** release
+(tag commit `61b3fb5dd3f1e8ec09cf7e4e05208bc6d3c46406`), its release
+notes (opt-in AMD/multi-GPU speedups, Windows AMD and tight-RAM fixes,
+folds in the never-released 0.1.41.1 fixes; the 0.1.40/0.1.41 facts —
+auto-detect via PCI `1002:1586`, `STRATA_GFX1151_DEFAULTS`, gfx1151
+hipBLASLt tables #1388, `STRATA_PREFILL_STREAM_MIN=128` #1391 — still
+hold), and the tag's
+[`docs/STRIX_HALO.md`](https://github.com/Niko1221/Strata/blob/v0.1.42/docs/STRIX_HALO.md)
+and `setup.py` (`STRIX_HALO_ARCH` / `STRIX_HALO_PCI_IDS` /
+`strix_halo_recommends`). The systemd service, service user, firewall
 gating, and model-store wiring are deniac's.
 
 ## Tests

@@ -11,10 +11,24 @@
 #   * The AMD path (RX 7900 XT/XTX = gfx1100, etc.) is a **natively
 #     compiled HIP/ROCm engine** produced by `setup.py` — not packaged
 #     in nixpkgs.
-#   * gfx1151 (Strix Halo) is **WIP** — owner-confirmed in
-#     https://github.com/Niko1221/Strata/issues/612 ("working on a port
-#     for it now"). Until that lands, this aspect targets discrete AMD
-#     GPUs (gfx1100+), NOT the Halo.
+#   * gfx1151 (Strix Halo / Ryzen AI Max+) is **experimental but
+#     supported on Linux since Strata 0.1.40** — the Aurora port merged,
+#     owner-confirmed in
+#     https://github.com/Niko1221/Strata/issues/612 ("gfx1151 (Strix
+#     Halo) is admitted as experimental in 0.1.40 on Linux"). `setup.sh`
+#     auto-detects the chip (PCI 1002:1586), compiles the HIP engine
+#     for it itself, and recommends UD-IQ4_XS from ~80 GB of unified
+#     memory. No opt-in flag is needed — upstream docs/STRIX_HALO.md has
+#     the toolchain details. 0.1.41 added gfx1151 hipBLASLt tuning
+#     tables (#1388) and `STRATA_PREFILL_STREAM_MIN=128` in the gfx1151
+#     fast config (#1391); 0.1.42 adds opt-in AMD/multi-GPU speedups
+#     and fixes for Windows AMD and tight-RAM machines. (Windows Halo
+#     support is still pending, #918.)
+#
+# Version reference: this aspect wraps the out-of-band install and pins
+# nothing itself. The bump target is tag **v0.1.42** =
+# `61b3fb5dd3f1e8ec09cf7e4e05208bc6d3c46406` (2026-10-10), the
+# latest release (folds in the never-released 0.1.41.1 fixes).
 #
 # So this aspect does NOT build or containerize the engine. It manages a
 # systemd service around a Strata install you create out-of-band with
@@ -49,8 +63,12 @@
       This is a WRAPPER, not a container: Strata's Docker image is
       NVIDIA-only and the AMD engine is compiled imperatively (not in
       nixpkgs). Targets discrete AMD GPUs (gfx1100+, e.g. RX 7900
-      XT/XTX). gfx1151 / Strix Halo is WIP (Strata#612) — not runnable
-      on the Halo until that port lands.
+      XT/XTX), and — experimental, Linux only — gfx1151 / Strix Halo
+      (Ryzen AI Max+) since Strata 0.1.40: the Aurora port merged
+      (Strata#612), and `setup.sh` auto-detects the chip; no extra
+      option is needed on this side. Bump target: v0.1.42 (latest,
+      2026-10-10), which adds opt-in AMD/multi-GPU speedups and fixes
+      for Windows AMD and tight-RAM machines.
     '';
 
     nixos =
