@@ -140,6 +140,57 @@ in
       }
     );
 
+    # ── munix tier: DEFAULT-DENY bind (mirror of the bwrap test) ─────
+    # The launcher binds ONLY the declared paths — never the real home,
+    # never its root. The store slice limits store *visibility*; this
+    # locks the SEPARATE property that host secrets (~/.ssh, ~/.aws,
+    # browser profiles) are simply ABSENT from the VM because they are
+    # never bound. If mkMunixLauncher ever regressed to binding $HOME or
+    # the home root, these assertions fail.
+    test-munix-default-deny-binds = denTest (
+      { inputs, den, deniac, ... }:
+      let
+        pkgs = import inputs.nixpkgs { system = "x86_64-linux"; };
+        hj = import ../../lib/hermes-jail.nix { inherit (pkgs) lib; };
+        profile = {
+          tier = "munix";
+          bindReadonly = [ "/home/tux/work/myrepo" ];
+          bindReadwrite = [ "/home/tux/research-out" ];
+          mcpServers = { };
+          settings = { };
+          soul = null;
+          network = "none";
+          gpu = false;
+          munixPackage = pkgs.hello;
+          munixClosure = "/nix/store/fake-researcher-toplevel";
+          storeSlice = null;
+          extraPackages = [ ];
+          env = { };
+        };
+        launcher = builtins.readFile
+          ((hj.mkMunixLauncher pkgs pkgs.hello "researcher" profile) + "/bin/hermes-munix-researcher");
+      in
+      {
+        expr = {
+          bindsDeclaredRo = has "--ro-bind /home/tux/work/myrepo" launcher;
+          bindsDeclaredRw = has "--bind /home/tux/research-out" launcher;
+          # the home ROOT is never bound (only the declared subdirs)
+          noHomeRootRw = !(has "--bind /home/tux " launcher);
+          noHomeRootRo = !(has "--ro-bind /home/tux " launcher);
+          # and no literal $HOME bind either (belt-and-suspenders vs bwrap)
+          noDollarHome = !(has ''--bind "$HOME"'' launcher)
+            && !(has ''--bind "''${HOME}"'' launcher);
+        };
+        expected = {
+          bindsDeclaredRo = true;
+          bindsDeclaredRw = true;
+          noHomeRootRw = true;
+          noHomeRootRo = true;
+          noDollarHome = true;
+        };
+      }
+    );
+
     # ── munix tier: opt-in store-slice (--store-dev/--sandbox-store) ─
     test-munix-store-slice = denTest (
       { inputs, den, deniac, ... }:
