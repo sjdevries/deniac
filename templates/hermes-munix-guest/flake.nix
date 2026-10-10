@@ -40,7 +40,11 @@
   };
 
   inputs = {
-    munix.url = "git+https://git.clan.lol/clan/munix?shallow=1&ref=main";
+    # Fork pin (2026-10-10): sjdevries/munix feat/closure-only-store
+    # carries --store-dev/--sandbox-store (erofs block-device store
+    # slice), not yet in upstream main. Superseding PR: clan/munix #38.
+    # Re-point to clan/munix once that merges.
+    munix.url = "git+https://git.clan.lol/sjdevries/munix?shallow=1&ref=feat/closure-only-store";
     nixpkgs.follows = "munix/nixpkgs";
     # Same hermes pin deniac uses, so the guest agent == the host agent.
     llm-agents.url = "github:numtide/llm-agents.nix/32f95b57bd11604871fb663c6724da15112860ee";
