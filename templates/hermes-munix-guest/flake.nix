@@ -99,46 +99,30 @@
           ]
           ++ extraModules;
         };
-    in
-    {
-      # The reusable builder — other flakes: inputs.<this-flake>.lib.mkGuest { … }
-      lib.mkGuest = mkGuest;
 
-      packages.${system} =
+      # ── Reusable store-slice builder ─────────────────────────────────
+      # Turns any mkGuest system into the (paths, erofs) pair the
+      # --store-dev launcher consumes. Extracted so researcher / coder /
+      # auditor share ONE recipe (was inline per-guest). The munix RUNNER
+      # is a rootPath because its binaries are read pre-activation too.
+      # Method: research §6 / clan/munix PR #38 (fork pin).
+      mkStoreSlice = name: guest:
         let
-          # Instance #1 — the headless researcher: hermes, NO graphics.
-          # packages → environment.systemPackages: on PATH in the guest
-          # AND pulled into the closure, so the erofs store slice grows to
-          # include them (auditable before boot). Read-only reach only:
-          #   git  = clone/fetch PUBLIC repos (no creds bound → can't push)
-          #   jq   = parse JSON (API responses, lockfiles, scraped data)
-          #   rg   = fast recursive search over cloned/research-out trees
-          researcherGuest = mkGuest {
-            app = hermes;
-            graphics = false;
-            packages = [ pkgs.git pkgs.jq pkgs.ripgrep ];
-            defaultCommand = "hermes -p researcher";
-          };
-
-          # ── Store slice: the researcher closure as ONE erofs image ───
-          # With --store-dev the guest's /nix/store comes from this file
-          # instead of the host store (micro-activate mounts it before any
-          # closure path is read). The munix RUNNER is a rootPath because
-          # its binaries are read pre-activation too.
-          # Method: research §6 / clan/munix PR #38 (fork pin).
-          researcherClosure = pkgs.closureInfo {
+          closure = pkgs.closureInfo {
             rootPaths = [
-              researcherGuest.config.system.build.toplevel
+              guest.config.system.build.toplevel
               munix.packages.${system}.munix
             ];
           };
-
-          researcherStoreErofs = pkgs.runCommand "researcher-store-erofs" {
+        in
+        {
+          paths = closure;
+          erofs = pkgs.runCommand "${name}-store-erofs" {
             nativeBuildInputs = [ pkgs.erofs-utils pkgs.bubblewrap ];
           } ''
             mkdir store
             args="--dev-bind / / --chdir $(pwd)"
-            for d in $(cat ${researcherClosure}/store-paths); do
+            for d in $(cat ${closure}/store-paths); do
               args="$args --ro-bind $d $(pwd)/store/$(basename "$d")"
             done
             # bwrap avoids copying the closure; the cp -a fallback covers
@@ -148,34 +132,94 @@
                 --mount-point=/nix/store $out store \
               || {
                 echo "bwrap path failed; copying closure" >&2
-                cp -a $(cat ${researcherClosure}/store-paths) store/
+                cp -a $(cat ${closure}/store-paths) store/
                 mkfs.erofs -T 0 --all-root -L nix-store \
                   --mount-point=/nix/store $out store
               }
           '';
+        };
+    in
+    {
+      # The reusable builder — other flakes: inputs.<this-flake>.lib.mkGuest { … }
+      lib.mkGuest = mkGuest;
+
+      packages.${system} =
+        let
+          # ── The three agents (all headless hermes, no graphics) ──────
+          # Each is a SEPARATE closure + store slice: different tools,
+          # different blast radius. The ROLE (binds, soul, authority) is
+          # set in the CONSUMER flake (the fleet's ai.hermes profile);
+          # this template only supplies the per-role GUEST (app + tools).
+
+          # Researcher — web-facing gatherer. Read-only reach: git clones
+          # public repos (no creds → can't push), jq parses JSON, rg
+          # searches. Writes to research-out (bound in the fleet), into
+          # a per-consumer subdir so its output fans out isolated.
+          researcherGuest = mkGuest {
+            app = hermes;
+            graphics = false;
+            packages = [ pkgs.git pkgs.jq pkgs.ripgrep ];
+            defaultCommand = "hermes -p researcher";
+          };
+          researcherSlice = mkStoreSlice "researcher" researcherGuest;
+
+          # Coder — writes code + opens PRs. Light toolset for now.
+          # NOTE: in-VM `nix build` of NEW packages needs a WRITABLE
+          # store (ext4 image + nix-daemon); the read-only erofs slice
+          # here runs PRE-BUILT tools only. The writable-store dev-mode
+          # is the next munix feature — see the fleet coder profile TODO.
+          coderGuest = mkGuest {
+            app = hermes;
+            graphics = false;
+            packages = [ pkgs.git pkgs.jq pkgs.ripgrep ];
+            defaultCommand = "hermes -p coder";
+          };
+          coderSlice = mkStoreSlice "coder" coderGuest;
+
+          # Auditor — security review. Deterministic floor tools (NOT
+          # prompt-injectable, unlike the LLM):
+          #   semgrep      SAST — pattern + custom rules
+          #   osv-scanner  multi-ecosystem CVE lookup (OSV database)
+          #   cargo-audit  RustSec advisory check against Cargo.lock
+          # + the read/search tools. All pre-built → read-only slice fits.
+          auditorGuest = mkGuest {
+            app = hermes;
+            graphics = false;
+            packages = [
+              pkgs.git
+              pkgs.jq
+              pkgs.ripgrep
+              pkgs.semgrep
+              pkgs.osv-scanner
+              pkgs.cargo-audit
+            ];
+            defaultCommand = "hermes -p auditor";
+          };
+          auditorSlice = mkStoreSlice "auditor" auditorGuest;
         in
         {
-          # The wrapped launcher — bakes MICROVM_DEFAULT_COMMAND, run directly.
+          # ── researcher ──
           researcher = researcherGuest.config.system.build.munix;
-
-          # The RAW toplevel — the closure the deniac `ai.hermes` launcher's
-          # `munixClosure` points at (that launcher supplies its own
-          # `hermes -p <name>` + binds, so it wants the bare closure, not the
-          # baked launcher). A consumer flake wires it as:
-          #   munixPackage = <munix>;
-          #   munixClosure = toString inputs.<this>.packages.${system}.researcher-toplevel;
           researcher-toplevel = researcherGuest.config.system.build.toplevel;
+          researcher-store-erofs = researcherSlice.erofs;
+          researcher-store-paths = researcherSlice.paths;
 
-          # Store-slice pair — step ③'s launcher flags consume both:
-          #   munix --store-dev  ${researcher-store-erofs}
-          #         --sandbox-store ${researcher-store-paths}
-          # (the paths file is the small set muvm must read PRE-activation).
-          researcher-store-erofs = researcherStoreErofs;
-          researcher-store-paths = researcherClosure;
+          # ── coder ──
+          coder = coderGuest.config.system.build.munix;
+          coder-toplevel = coderGuest.config.system.build.toplevel;
+          coder-store-erofs = coderSlice.erofs;
+          coder-store-paths = coderSlice.paths;
 
-          # Re-expose the munix runner so a consumer needs only THIS one input
-          # for both the closure and the launcher binary (the runner is pinned
-          # to the same munix the guest was built against — they must match).
+          # ── auditor ──
+          auditor = auditorGuest.config.system.build.munix;
+          auditor-toplevel = auditorGuest.config.system.build.toplevel;
+          auditor-store-erofs = auditorSlice.erofs;
+          auditor-store-paths = auditorSlice.paths;
+
+          # Re-expose the munix runner so a consumer needs only THIS one
+          # input for both the closures and the launcher binary (the
+          # runner is pinned to the same munix the guests were built
+          # against — they must match).
           munix = munix.packages.${system}.munix;
         };
 
