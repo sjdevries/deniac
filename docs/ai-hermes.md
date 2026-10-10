@@ -165,6 +165,7 @@ Each profile (`profiles.<name>`):
 | `gpu` | bool | `false` | munix: pass GPU through |
 | `munixPackage` | nullOr package | `null` | munix runner (consumer-provided; deniac doesn't pin libkrun/KVM) |
 | `munixClosure` | nullOr str | `null` | the NixOS toplevel the microVM boots |
+| `storeSlice` | nullOr `{ image, sandboxPaths; }` | `null` | opt-in closure-only `/nix/store`: `--store-dev <erofs image>` + `--sandbox-store <store-paths file>`; needs the forked munix (`feat/closure-only-store`, upstream PR clan/munix #38) |
 | `extraPackages` | [package] | `[]` | Extra PATH packages |
 | `env` | attrs | `{}` | Extra env vars in the compartment |
 
@@ -189,6 +190,13 @@ den.aspects.tux.homeManager.deniac.ai.hermes = {
       # from" below). They must be the same munix the guest was built with.
       munixPackage = inputs.hermes-munix-guest.packages.x86_64-linux.munix;
       munixClosure = toString inputs.hermes-munix-guest.packages.x86_64-linux.researcher-toplevel;
+      # Optional: closure-only /nix/store (the guest sees only its own
+      # closure, not the host store). Both files come from the same
+      # template input (researcher-store-erofs / researcher-store-paths).
+      storeSlice = {
+        image = toString inputs.hermes-munix-guest.packages.x86_64-linux.researcher-store-erofs;
+        sandboxPaths = toString inputs.hermes-munix-guest.packages.x86_64-linux.researcher-store-paths;
+      };
       bindReadwrite = [ "/home/tux/research-out" ];   # its only write target
       mcpServers.donsetch.command = "donsetch";
       settings.model.base_url = "http://100.64.0.1:8731/v1";  # local today
