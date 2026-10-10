@@ -213,8 +213,8 @@
             default = null;
             example = lib.literalExpression ''
               {
-                image = toString guest.packages.\${system}.researcher-store-erofs;
-                sandboxPaths = toString guest.packages.\${system}.researcher-store-paths;
+                image = toString guest.packages.''${system}.researcher-store-erofs;
+                sandboxPaths = toString guest.packages.''${system}.researcher-store-paths;
               }
             '';
             description = ''
