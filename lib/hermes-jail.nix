@@ -133,6 +133,17 @@ rec {
     let
       netFlag = if prof.network == "none" then "--no-network" else "";
       gpuFlag = if !prof.gpu then "--no-gpu" else "";
+      # Opt-in closure-only /nix/store (munix --store-dev, our fork
+      # branch feat/closure-only-store / upstream clan-munix PR #38):
+      # the guest store comes from the erofs image, and --sandbox-store
+      # lists the host paths muvm must read PRE-activation. null = the
+      # whole-host store bind (unchanged default).
+      storeFlags =
+        if prof.storeSlice or null != null then
+          "--store-dev ${lib.escapeShellArg prof.storeSlice.image} "
+          + "--sandbox-store ${lib.escapeShellArg prof.storeSlice.sandboxPaths}"
+        else
+          "";
       roBinds = lib.concatStringsSep " "
         (map (d: "--ro-bind ${lib.escapeShellArg d} ${lib.escapeShellArg d}") prof.bindReadonly);
       rwBinds = lib.concatStringsSep " "
@@ -147,6 +158,7 @@ rec {
       fi
       exec ${munixPkg}/bin/munix \
         ${netFlag} ${gpuFlag} \
+        ${storeFlags} \
         ${roBinds} ${rwBinds} \
         "$CLOSURE" \
         hermes -p ${name} "$@"

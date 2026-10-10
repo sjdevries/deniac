@@ -195,6 +195,44 @@
             '';
           };
 
+          storeSlice = lib.mkOption {
+            type = lib.types.nullOr (lib.types.submodule {
+              options = {
+                image = lib.mkOption {
+                  type = lib.types.str;
+                  example = "/nix/store/abcd-researcher-store-erofs";
+                  description = "Path to the prebuilt erofs store image (--store-dev argument).";
+                };
+                sandboxPaths = lib.mkOption {
+                  type = lib.types.str;
+                  example = "/nix/store/efgh-closure-info/store-paths";
+                  description = "Path to the closureInfo store-paths file (--sandbox-store argument).";
+                };
+              };
+            });
+            default = null;
+            example = lib.literalExpression ''
+              {
+                image = toString guest.packages.\${system}.researcher-store-erofs;
+                sandboxPaths = toString guest.packages.\${system}.researcher-store-paths;
+              }
+            '';
+            description = ''
+              munix tier: closure-only /nix/store (opt-in). When set, the
+              launcher passes `--store-dev <image>` — the guest's
+              /nix/store comes from this erofs block-device image,
+              mounted by micro-activate before any closure path is read —
+              plus `--sandbox-store <sandboxPaths>`, the host paths muvm
+              must read pre-activation. `null` keeps the whole-host store
+              bind (the default). Requires a munix that has `--store-dev`
+              (our fork branch `feat/closure-only-store`; upstream
+              clan/munix PR #38). Build the pair with `pkgs.closureInfo`
+              + `mkfs.erofs` — see the hermes-munix-guest template's
+              `researcher-store-erofs` / `researcher-store-paths`
+              outputs.
+            '';
+          };
+
           extraPackages = lib.mkOption {
             type = lib.types.listOf lib.types.package;
             default = [ ];

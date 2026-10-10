@@ -113,6 +113,7 @@ in
           gpu = false;
           munixPackage = pkgs.hello; # stub for the munix binary path
           munixClosure = "/nix/store/fake-reviewer-toplevel";
+          storeSlice = null;
           extraPackages = [ ];
           env = { };
         };
@@ -126,12 +127,57 @@ in
           hasClosure = has "/nix/store/fake-reviewer-toplevel" launcher;
           roBindsRepo = has "--ro-bind /home/tux/work/myrepo" launcher;
           runsDashP = has "hermes -p reviewer" launcher;
+          noStoreFlags = !(has "--store-dev" launcher) && !(has "--sandbox-store" launcher);
         };
         expected = {
           hasNoNetwork = true;
           hasNoGpu = true;
           hasClosure = true;
           roBindsRepo = true;
+          runsDashP = true;
+          noStoreFlags = true;
+        };
+      }
+    );
+
+    # ── munix tier: opt-in store-slice (--store-dev/--sandbox-store) ─
+    test-munix-store-slice = denTest (
+      { inputs, den, deniac, ... }:
+      let
+        pkgs = import inputs.nixpkgs { system = "x86_64-linux"; };
+        hj = import ../../lib/hermes-jail.nix { inherit (pkgs) lib; };
+        profile = {
+          tier = "munix";
+          bindReadonly = [ ];
+          bindReadwrite = [ ];
+          mcpServers = { };
+          settings = { };
+          soul = null;
+          network = "full";
+          gpu = false;
+          munixPackage = pkgs.hello; # stub for the munix binary path
+          munixClosure = "/nix/store/fake-researcher-toplevel";
+          storeSlice = {
+            image = "/nix/store/fake-researcher-store-erofs";
+            sandboxPaths = "/nix/store/fake-closure-info/store-paths";
+          };
+          extraPackages = [ ];
+          env = { };
+        };
+        launcher = builtins.readFile
+          ((hj.mkMunixLauncher pkgs pkgs.hello "researcher" profile) + "/bin/hermes-munix-researcher");
+      in
+      {
+        expr = {
+          hasStoreDev = has "--store-dev /nix/store/fake-researcher-store-erofs" launcher;
+          hasSandboxStore = has "--sandbox-store /nix/store/fake-closure-info/store-paths" launcher;
+          stillHasClosure = has "/nix/store/fake-researcher-toplevel" launcher;
+          runsDashP = has "hermes -p researcher" launcher;
+        };
+        expected = {
+          hasStoreDev = true;
+          hasSandboxStore = true;
+          stillHasClosure = true;
           runsDashP = true;
         };
       }
