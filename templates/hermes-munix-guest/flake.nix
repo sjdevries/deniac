@@ -54,6 +54,7 @@
     { munix, nixpkgs, llm-agents, ... }:
     let
       system = "x86_64-linux";
+      pkgs = nixpkgs.legacyPackages.${system};
       hermes = llm-agents.packages.${system}.hermes-agent;
 
       # ── The parametric builder ───────────────────────────────────────
@@ -111,6 +112,40 @@
             graphics = false;
             defaultCommand = "hermes -p researcher";
           };
+
+          # ── Store slice: the researcher closure as ONE erofs image ───
+          # With --store-dev the guest's /nix/store comes from this file
+          # instead of the host store (micro-activate mounts it before any
+          # closure path is read). The munix RUNNER is a rootPath because
+          # its binaries are read pre-activation too.
+          # Method: research §6 / clan/munix PR #38 (fork pin).
+          researcherClosure = pkgs.closureInfo {
+            rootPaths = [
+              researcherGuest.config.system.build.toplevel
+              munix.packages.${system}.munix
+            ];
+          };
+
+          researcherStoreErofs = pkgs.runCommand "researcher-store-erofs" {
+            nativeBuildInputs = [ pkgs.erofs-utils pkgs.bubblewrap ];
+          } ''
+            mkdir store
+            args="--dev-bind / / --chdir $(pwd)"
+            for d in $(cat ${researcherClosure}/store-paths); do
+              args="$args --ro-bind $d $(pwd)/store/$(basename "$d")"
+            done
+            # bwrap avoids copying the closure; the cp -a fallback covers
+            # build sandboxes that forbid nested bwrap (same fallback
+            # microvm.nix carries).
+            bwrap $args -- mkfs.erofs -T 0 --all-root -L nix-store \
+                --mount-point=/nix/store $out store \
+              || {
+                echo "bwrap path failed; copying closure" >&2
+                cp -a $(cat ${researcherClosure}/store-paths) store/
+                mkfs.erofs -T 0 --all-root -L nix-store \
+                  --mount-point=/nix/store $out store
+              }
+          '';
         in
         {
           # The wrapped launcher — bakes MICROVM_DEFAULT_COMMAND, run directly.
@@ -123,6 +158,13 @@
           #   munixPackage = <munix>;
           #   munixClosure = toString inputs.<this>.packages.${system}.researcher-toplevel;
           researcher-toplevel = researcherGuest.config.system.build.toplevel;
+
+          # Store-slice pair — step ③'s launcher flags consume both:
+          #   munix --store-dev  ${researcher-store-erofs}
+          #         --sandbox-store ${researcher-store-paths}
+          # (the paths file is the small set muvm must read PRE-activation).
+          researcher-store-erofs = researcherStoreErofs;
+          researcher-store-paths = researcherClosure;
 
           # Re-expose the munix runner so a consumer needs only THIS one input
           # for both the closure and the launcher binary (the runner is pinned
