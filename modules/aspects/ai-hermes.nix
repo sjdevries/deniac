@@ -233,6 +233,22 @@
             '';
           };
 
+          modelKeySecret = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            example = "/run/agenix/hermes-model-key";
+            description = ''
+              Path to the DECRYPTED model API key, read by the launcher
+              at run time and passed into the compartment as the
+              `HERMES_MODEL_KEY` env var. The path is secret-manager
+              agnostic — agenix (`/run/agenix/<name>`) and sops-nix
+              (`/run/secrets/<name>`) both work; the launcher just reads
+              the file. `null` = keyless (halogen's current posture).
+              The key NEVER lives in the nix store — only in the
+              decrypted runtime file and the compartment's env.
+            '';
+          };
+
           extraPackages = lib.mkOption {
             type = lib.types.listOf lib.types.package;
             default = [ ];

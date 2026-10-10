@@ -148,6 +148,15 @@ rec {
         (map (d: "--ro-bind ${lib.escapeShellArg d} ${lib.escapeShellArg d}") prof.bindReadonly);
       rwBinds = lib.concatStringsSep " "
         (map (d: "--bind ${lib.escapeShellArg d} ${lib.escapeShellArg d}") prof.bindReadwrite);
+      # Model key: null = keyless (halogen today). If set, the launcher
+      # reads the decrypted secret file (agenix /run/agenix/<n> or sops
+      # /run/secrets/<n>) at run time and passes it into the VM as
+      # HERMES_MODEL_KEY. Never baked into the nix store.
+      keyEnv =
+        if prof.modelKeySecret or null != null then
+          ''HERMES_MODEL_KEY="$(cat ${lib.escapeShellArg prof.modelKeySecret})" ''
+        else
+          "";
     in
     pkgs.writeShellScriptBin "hermes-munix-${name}" ''
       set -eu
@@ -156,11 +165,22 @@ rec {
         echo "hermes-munix-${name}: munixClosure is not set (required for tier = munix)" >&2
         exit 1
       fi
+      : "''${HOME:?HOME must be set (the profile home lives under it)}"
+      # ── profile-config delivery (mirrors the bwrap jail) ──────────
+      # The host activation renders this profile's config.yaml + SOUL.md
+      # at $HOME/.hermes/profiles/<name>. Bind it into the VM rw (so
+      # learned keys + session state persist back to the host) and point
+      # HERMES_HOME at it. Without this the VM's hermes boots with NO
+      # soul / settings / MCP servers. Only THIS profile's dir is bound,
+      # so sibling profiles stay isolated.
+      PH="$HOME/.hermes/profiles/${name}"
+      mkdir -p "$PH/home"
       exec ${munixPkg}/bin/munix \
         ${netFlag} ${gpuFlag} \
         ${storeFlags} \
+        --bind "$PH" "$PH" \
         ${roBinds} ${rwBinds} \
         "$CLOSURE" \
-        hermes -p ${name} "$@"
+        env ${keyEnv}HERMES_HOME="$PH" HOME="$PH/home" hermes -p ${name} "$@"
     '';
 }
