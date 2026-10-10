@@ -138,6 +138,54 @@
               }
           '';
         };
+
+      # ── request-tool MCP server (the coder's tool-request interface) ──
+      # Minimal MCP-over-stdio server exposing request_tool(name, reason).
+      # Runs INSIDE the coder VM; appends "<name>\t<reason>" to the
+      # request file passed as $1 (a host path bound rw into the VM),
+      # where the gate reads it. Needs jq (already in the coder closure).
+      #
+      # FLAG: the MCP handshake (protocolVersion / framing) is best-effort
+      # and must be validated against the real hermes MCP client on first
+      # boot. The request FILE is the source of truth regardless — the
+      # agent can also just write to it directly with its shell tools.
+      requestToolMcp = pkgs.writeShellApplication {
+        name = "request-tool-mcp";
+        runtimeInputs = [ pkgs.jq ];
+        text = ''
+          REQ="''${1:?usage: request-tool-mcp <request-file>}"
+          send() { printf '%s\n' "$1"; }
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            id=$(printf '%s' "$line" | jq -r 'if has("id") then .id else "null" end' 2>/dev/null) || continue
+            method=$(printf '%s' "$line" | jq -r '.method // empty' 2>/dev/null)
+            case "$method" in
+              initialize)
+                send "$(jq -n --argjson id "$id" '{jsonrpc:"2.0",id:$id,result:{protocolVersion:"2024-11-05",capabilities:{tools:{}},serverInfo:{name:"request-tool",version:"0.1.0"}}}')"
+                ;;
+              tools/list)
+                send "$(jq -n --argjson id "$id" '{jsonrpc:"2.0",id:$id,result:{tools:[{name:"request_tool",description:"Request that a nix package be added to this VM closure (pending human approval + rebuild).",inputSchema:{type:"object",properties:{name:{type:"string"},reason:{type:"string"}},required:["name"]}}]}}')"
+                ;;
+              tools/call)
+                name=$(printf '%s' "$line" | jq -r '.params.arguments.name // empty')
+                reason=$(printf '%s' "$line" | jq -r '.params.arguments.reason // ""')
+                if [ -n "$name" ]; then
+                  printf '%s\t%s\n' "$name" "$reason" >> "$REQ"
+                  send "$(jq -n --argjson id "$id" --arg m "Recorded request for '$name' (pending approval + closure rebuild)." '{jsonrpc:"2.0",id:$id,result:{content:[{type:"text",text:$m}]}}')"
+                else
+                  send "$(jq -n --argjson id "$id" '{jsonrpc:"2.0",id:$id,error:{code:-32602,message:"request_tool requires a name"}}')"
+                fi
+                ;;
+              notifications/*) : ;;
+              *)
+                if [ "$id" != "null" ]; then
+                  send "$(jq -n --argjson id "$id" --arg m "unknown method: $method" '{jsonrpc:"2.0",id:$id,error:{code:-32601,message:$m}}')"
+                fi
+                ;;
+            esac
+          done
+        '';
+      };
     in
     {
       # The reusable builder — other flakes: inputs.<this-flake>.lib.mkGuest { … }
@@ -171,7 +219,9 @@
           coderGuest = mkGuest {
             app = hermes;
             graphics = false;
-            packages = [ pkgs.git pkgs.jq pkgs.ripgrep ];
+            packages =
+              [ pkgs.git pkgs.jq pkgs.ripgrep requestToolMcp ]
+              ++ import ./coder-tools.nix pkgs;
             defaultCommand = "hermes -p coder";
           };
           coderSlice = mkStoreSlice "coder" coderGuest;
