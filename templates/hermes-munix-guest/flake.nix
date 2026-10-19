@@ -40,11 +40,13 @@
   };
 
   inputs = {
-    # Fork pin (2026-10-10): sjdevries/munix feat/closure-only-store
-    # carries --store-dev/--sandbox-store (erofs block-device store
-    # slice), not yet in upstream main. Superseding PR: clan/munix #38.
-    # Re-point to clan/munix once that merges.
-    munix.url = "git+https://git.clan.lol/sjdevries/munix?shallow=1&ref=feat/closure-only-store";
+    # Fork pin (2026-10-19): sjdevries/munix feat/store-mode — a clean
+    # superset of PR #38 (feat/closure-only-store @ 5b64db2) that adds the
+    # selectable --store-mode full|closure|erofs launcher plus the
+    # micro-activate fix that relocates the /etc basedir into tmpfs when it
+    # arrives as a virtiofs submount (closure mode), so the immutable /etc
+    # overlay mounts and systemctl works. Re-point to clan/munix once #38 merges.
+    munix.url = "git+https://git.clan.lol/sjdevries/munix?shallow=1&ref=feat/store-mode";
     nixpkgs.follows = "munix/nixpkgs";
     # Same hermes pin deniac uses, so the guest agent == the host agent.
     llm-agents.url = "github:numtide/llm-agents.nix/32f95b57bd11604871fb663c6724da15112860ee";
