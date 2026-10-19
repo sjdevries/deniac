@@ -126,16 +126,16 @@
         "wl-backdrop": "wl-backdrop"
       },
       "locked": {
-        "lastModified": 1791638575,
-        "narHash": "sha256-6PiVQ1cb+RkwuadlqdH2VfUDw71GvVQk32nhL7oPxEM=",
-        "ref": "feat/closure-only-store",
-        "rev": "5b64db2c3f75a0ba4c8eb3680b577521063134ad",
+        "lastModified": 1792370560,
+        "narHash": "sha256-HoSJ9BZQoGFcfU/VM3z3kyn04H6TYCL6tY26pXOH6Fo=",
+        "ref": "feat/store-mode",
+        "rev": "77008d3392521e92ef6414cc603ac7d41d9a2eb2",
         "shallow": true,
         "type": "git",
         "url": "https://git.clan.lol/sjdevries/munix"
       },
       "original": {
-        "ref": "feat/closure-only-store",
+        "ref": "feat/store-mode",
         "shallow": true,
         "type": "git",
         "url": "https://git.clan.lol/sjdevries/munix"
