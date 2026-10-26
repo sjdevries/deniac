@@ -48,8 +48,15 @@
     # overlay mounts and systemctl works. Re-point to clan/munix once #38 merges.
     munix.url = "git+https://git.clan.lol/sjdevries/munix?shallow=1&ref=feat/store-mode";
     nixpkgs.follows = "munix/nixpkgs";
-    # Same hermes pin deniac uses, so the guest agent == the host agent.
-    llm-agents.url = "github:numtide/llm-agents.nix/32f95b57bd11604871fb663c6724da15112860ee";
+    # Follow upstream llm-agents.nix (its default branch) instead of a fixed
+    # commit, so the guest's hermes tracks the latest upstream release;
+    # `nix flake update llm-agents` here re-resolves to current upstream.
+    # SHARED-INPUT NOTE: this input provides dsh too, so a follow moves both.
+    # As of 2026-10-26 upstream main carries hermes-agent 0.22.5 + dsh
+    # 0.2.1-rc.3 — the same versions deniac's own pinned input has, so the
+    # guest agent == the host agent today. A follow can diverge from deniac's
+    # pin later; re-check deniac/flake.nix when updating if that matters.
+    llm-agents.url = "github:numtide/llm-agents.nix";
   };
 
   outputs =
