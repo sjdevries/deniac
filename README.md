@@ -89,7 +89,7 @@ Path scheme: `persistent.<domain>.<host>.<user>.<tier>.<aspect>`
     - [`ai.comfyui`](docs/ai-comfyui.md) — ComfyUI via comfyui-nix
           (`rocmChannel` escape hatch for new AMD GPUs)
     - [`ai.dsh`](docs/ai-dsh.md) — DeepSeek Harness, per-user Home Manager
-          aspect (package + `~/.dsh/settings.yaml`)
+          aspect (package only)
     - [`ai.unsloth`](docs/ai-unsloth.md) — Unsloth Studio consumer,
           store-wired
     - [`ai.unsloth-desktop`](docs/ai-unsloth-desktop.md) — Unsloth

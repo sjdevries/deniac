@@ -6,7 +6,7 @@
 # `expr` must be a flat leaf projection.
 #
 # Scope note: dsh is a `homeManager`-class aspect. A full homeManager eval
-# (a user with a homeManager class, projecting the rendered settings.yaml)
+# (a user with a homeManager class, projecting the installed package)
 # needs the home-manager input + the hm-host entity wired into the test tree;
 # that lands with the Phase-2 profile work. For now the namespace/shape
 # guarantee is asserted directly.

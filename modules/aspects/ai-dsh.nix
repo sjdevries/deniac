@@ -1,8 +1,8 @@
 # deniac.ai.dsh — DeepSeek Harness (dsh) as a per-user Home Manager aspect.
 #
 # Installs the `dsh` agent harness (npm `@deepseek-ai/dsh`, via the numtide
-# `llm-agents` flake input pinned in flake.nix) into the user's environment
-# and renders `~/.dsh/settings.yaml` from the `settings` option.
+# `llm-agents` flake input pinned in flake.nix) into the user's environment.
+# The aspect ships the PACKAGE ONLY — it owns no settings file (see SCOPE).
 #
 # Provenance: the package is numtide/llm-agents.nix `packages/dsh`
 # (buildNpmPackage of @deepseek-ai/dsh, MIT). Pinned to commit 0784674
@@ -23,32 +23,38 @@
 # 0.8.4 -> 0.22.5 (deliberate, user-approved; both verified building +
 # starting). Do not bump this input casually — re-verify hermes too.
 #
-# SCOPE (Phase 1): the package + settings.yaml ONLY. The dsh *profile* is an
-# npm-native pnpm/cordis workspace (`~/.dsh/profiles/web/{package.json,
-# cordis.patch.yml,node_modules}`) whose bundle list and per-bundle config
-# live outside settings.yaml. Building that node_modules closure in Nix is a
-# deliberate follow-up (Phase 2). This aspect therefore NEVER writes under
-# `~/.dsh/profiles/`, so an existing imperative profile keeps working
-# untouched.
+# SCOPE (Phase 1): the package ONLY — no settings file.
 #
-# Why a `homeManager` class (not `nixos`): `~/.dsh` is per-user state, so the
-# package and the generated settings belong in the user's Home Manager eval.
-# The class module is a plain home-manager module (gets `pkgs`, `config`,
-# `lib`); the `deniac` namespace resolves in it exactly as in a `nixos` class.
+# dsh 0.2.x REMOVED `~/.dsh/settings.yaml` as a configuration surface. The
+# settings service treats a file at that path as a ONE-SHOT legacy
+# migration: once the Loader settles, `importLegacyDocument`
+# (@deepseek-ai/dsh-settings) renames it to `settings.yaml.imported` and
+# pushes each of its sections into the ACTIVE PROFILE's Cordis patch. It is
+# never read again as live config.
+#
+# That makes a home-manager-owned `settings.yaml` actively harmful: every
+# `home-manager switch` recreates the path, every boot re-imports it, and
+# each re-import CLOBBERS whatever changed through the dsh UI in between
+# (the file is re-applied, not merged-once). This aspect therefore writes no
+# settings file at all.
+#
+# The durable declarative home for dsh config is the profile patch layer —
+# `~/.dsh/profiles/<name>/cordis.patch.yml`, a list of per-entry config
+# patches applied after the bundle patches. That is an npm-native
+# pnpm/cordis workspace (`package.json`, `cordis.patch.yml`,
+# `node_modules`) whose closure this aspect deliberately does NOT build or
+# write (Phase-2 work). So: package only here, profile patch owned by the
+# user's profile (or Phase 2), never `~/.dsh/settings.yaml`.
+#
+# Why a `homeManager` class (not `nixos`): `~/.dsh` is per-user state, so
+# the package belongs in the user's Home Manager eval. The class module is a
+# plain home-manager module (gets `pkgs`, `config`, `lib`); the `deniac`
+# namespace resolves in it exactly as in a `nixos` class.
 #
 # Usage (a user aspect that carries a homeManager class):
 #
 #   den.aspects.tux.includes = [ deniac.ai.dsh ];
 #   den.aspects.tux.homeManager.deniac.ai.dsh.enable = true;
-#   den.aspects.tux.homeManager.deniac.ai.dsh.settings = {
-#     idle_timeout = 3600;
-#     "llm-pi-ai".providers.halogen = {
-#       api = "openai-completions";
-#       baseURL = "http://127.0.0.1:8731/v1";
-#       apiKeyEnv = "HALOGEN_API_KEY";
-#     };
-#     "agent-default-model" = { provider = "halogen"; model = "halogen-qwen3.8-flash-next"; };
-#   };
 
 { inputs, lib, ... }:
 {
@@ -56,31 +62,26 @@
     description = ''
       DeepSeek Harness (dsh) — the open-source agent harness — installed
       per-user via Home Manager. Provides the `dsh` package (numtide
-      llm-agents, pinned to a known-good commit) and renders
-      `~/.dsh/settings.yaml` from the `settings` option. The npm-native
-      profile (bundle list + cordis.patch.yml + node_modules) is out of
-      scope: this aspect never writes `~/.dsh/profiles/`, so an existing
-      profile is preserved.
+      llm-agents, pinned to a known-good commit). Configuration is NOT
+      owned here: dsh 0.2.x treats `~/.dsh/settings.yaml` as a one-shot
+      legacy migration that is renamed away on first boot, so this aspect
+      writes no settings file. Live config lives in the user's profile
+      patch (`~/.dsh/profiles/<name>/cordis.patch.yml`), which this
+      aspect never touches — an existing imperative profile keeps working
+      untouched.
     '';
 
     homeManager =
     { config, lib, pkgs, ... }:
     let
       cfg = config.deniac.ai.dsh;
-      # NOTE: in this nixpkgs (26.11pre) `lib.generators.toYAML` is the
-      # stub `{ }: lib.strings.toJSON` — it takes an EMPTY attrset (passing
-      # `{ indent = … }` throws "unexpected argument 'indent'") and emits
-      # JSON. That is fine: JSON is a strict subset of YAML 1.2, and dsh's
-      # parser reads the file as YAML, so the structure is identical. Do
-      # not "fix" this by adding an indent option — the stub rejects it.
-      yaml = v: lib.generators.toYAML { } v;
     in
     {
       options.deniac.ai.dsh = {
         enable = lib.mkOption {
           type = lib.types.bool;
           default = false;
-          description = "Install dsh and generate ~/.dsh/settings.yaml for this user.";
+          description = "Install dsh for this user.";
         };
 
         package = lib.mkOption {
@@ -93,35 +94,10 @@
             different build.
           '';
         };
-
-        settings = lib.mkOption {
-          type = lib.types.attrsOf lib.types.anything;
-          default = { };
-          example = {
-            idle_timeout = 3600;
-            "llm-pi-ai".providers.halogen = {
-              api = "openai-completions";
-              baseURL = "http://127.0.0.1:8731/v1";
-              apiKeyEnv = "HALOGEN_API_KEY";
-            };
-            "agent-default-model" = {
-              provider = "halogen";
-              model = "halogen-qwen3.8-flash-next";
-            };
-          };
-          description = ''
-            Contents of ~/.dsh/settings.yaml, rendered as YAML via
-            lib.generators.toYAML. The structure mirrors the harness schema:
-            top-level timeouts, `agent`, `llm-pi-ai.providers.<name>`, and
-            `agent-default-model`. YAML comments are not carried over — keep
-            any rationale in the Nix source.
-          '';
-        };
       };
 
       config = lib.mkIf cfg.enable {
         home.packages = [ cfg.package ];
-        home.file.".dsh/settings.yaml".text = yaml cfg.settings;
       };
     };
   };
