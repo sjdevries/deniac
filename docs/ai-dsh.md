@@ -28,7 +28,7 @@ Declared under `deniac.ai.dsh` (homeManager class):
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
 | `enable` | bool | `false` | Install dsh and generate `~/.dsh/settings.yaml` for this user. |
-| `package` | package | `inputs.llm-agents.packages.<system>.dsh` | The dsh package. Pinned in `flake.nix` to `32f95b57` ("dsh: 0.1.5-rc.1 -> 0.1.5-rc.2") — a known-good version; upstream `main` has moved to 0.2.0-rc.2, unverified here. Override to pin a different build. |
+| `package` | package | `inputs.llm-agents.packages.<system>.dsh` | The dsh package. Pinned in `flake.nix` to `0784674` (llm-agents `main`, 2026-10-26) = dsh 0.2.1-rc.3 — verified building and starting on this box. (Was held at 0.1.5-rc.2 because dsh 0.1.6+ crashed at boot with `node-addon-require-builtin unsupported`, llm-agents#9994; fixed upstream by `e442eb67`.) Note this input is shared with hermes-agent — bumping it moves both. Override to pin a different build. |
 | `settings` | attrsOf anything | `{}` | Contents of `~/.dsh/settings.yaml`, rendered via `lib.generators.toYAML`. Mirrors the harness schema: top-level timeouts, `agent`, `llm-pi-ai.providers.<name>`, `agent-default-model`. YAML comments are not carried over — keep rationale in the Nix source. |
 
 > **Implementation note:** in the current nixpkgs (26.11pre),
