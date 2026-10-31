@@ -150,8 +150,13 @@
     # instead of `packages.<system>.solidcraft` hands the package-typed
     # option the whole per-system SET ({ default, solidcraft }). The
     # module system rejects that at activation — AFTER every
-    # env-derivation test above had already passed green. Forcing the
-    # leaf attributes here catches it at unit-test time instead.
+    # env-derivation test above had already passed green.
+    #
+    # Note on the idiom: `builtins.isDerivation` does NOT exist (verified
+    # via builtins.hasAttr). A derivation here is a plain set carrying
+    # outPath/pname/version, so those leaves are what distinguish a real
+    # package from the attrset — on the SET they all resolve to null/false
+    # and this test goes red instead of the build.
     test-package-resolves-to-derivation = denTest (
       { inputs, den, deniac, igloo, ... }:
       {
@@ -160,12 +165,14 @@
         den.aspects.igloo.includes = [ deniac.cad.solidcraft ];
 
         expr = {
-          isDerivation = builtins.isDerivation igloo.deniac.cad.solidcraft.package;
+          pname = igloo.deniac.cad.solidcraft.package.pname or null;
           version = igloo.deniac.cad.solidcraft.package.version or null;
+          hasOutPath = igloo.deniac.cad.solidcraft.package ? outPath;
         };
         expected = {
-          isDerivation = true;
+          pname = "solidcraft";
           version = "0.28.0";
+          hasOutPath = true;
         };
       }
     );
