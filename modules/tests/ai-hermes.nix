@@ -406,7 +406,7 @@ in
         inferred = hj.declaredConfig "p1" (base // {
           settings = {
             model = {
-              base_url = "http://192.168.1.1:8731/v1";
+              base_url = "https://example.invalid/v1";
               default = "halogen-qwen3.8-flash-next";
             };
           };
@@ -416,7 +416,7 @@ in
           settings = {
             model = {
               provider = "openrouter";
-              base_url = "http://192.168.1.1:8731/v1";
+              base_url = "https://example.invalid/v1";
               default = "some-model";
             };
           };
