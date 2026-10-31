@@ -125,10 +125,10 @@
         "wl-backdrop": "wl-backdrop"
       },
       "locked": {
-        "lastModified": 1792370560,
-        "narHash": "sha256-HoSJ9BZQoGFcfU/VM3z3kyn04H6TYCL6tY26pXOH6Fo=",
+        "lastModified": 1792972002,
+        "narHash": "sha256-3TRxbwiyi0N+8hiAQMGjZIdc2p9FCBsh79RtKCb8OLc=",
         "ref": "feat/store-mode",
-        "rev": "77008d3392521e92ef6414cc603ac7d41d9a2eb2",
+        "rev": "064a525baf71a6412604973868c9803c15ac8446",
         "shallow": true,
         "type": "git",
         "url": "https://git.clan.lol/sjdevries/munix"

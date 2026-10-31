@@ -115,6 +115,26 @@
       # auditor share ONE recipe (was inline per-guest). The munix RUNNER
       # is a rootPath because its binaries are read pre-activation too.
       # Method: research §6 / clan/munix PR #38 (fork pin).
+      # The store slice is compressed with lz4: measured 4.66 GiB -> 2.64 GiB
+      # (-43.2 %) on the researcher closure, and the mkfs pass costs ~14 s for
+      # the whole 5 GiB closure. lz4 decompression is cheap enough that a
+      # read-mostly store image barely notices.
+      #
+      # WHY lz4 AND NOT zstd/deflate (verified live 2026-10-30): the guest
+      # kernel is 6.12.91 as bundled by libkrunfw 5.5.0, and it REFUSES to
+      # mount zstd or deflate images — mount(2) returns -1 in micro-activate.
+      # `dump.erofs -s` shows those formats set the newer incompatible features
+      # `compr_cfgs` + `big_pcluster`, which that kernel's erofs build lacks.
+      # zstd's "required upstream kernel 6.10" line is necessary but NOT
+      # sufficient: the kconfig has to enable it too. lz4 uses the legacy
+      # on-disk format and mounts fine. Revisit when libkrunfw moves past
+      # 5.5.0 — zstd would win another ~8 points of ratio.
+      #
+      # NOTE: if your HOST filesystem already compresses (ZFS compress=lz4/zstd,
+      # btrfs compress=zstd), do NOT also compress here — double compression
+      # costs CPU twice and stores worse than host-compressing the plain image
+      # (measured: plain+host zstd 1.51 GiB vs erofs-lz4+host zstd 1.79 GiB).
+      # Pick one layer.
       mkStoreSlice = name: guest:
         let
           closure = pkgs.closureInfo {
@@ -137,12 +157,12 @@
             # bwrap avoids copying the closure; the cp -a fallback covers
             # build sandboxes that forbid nested bwrap (same fallback
             # microvm.nix carries).
-            bwrap $args -- mkfs.erofs -T 0 --all-root -L nix-store \
+            bwrap $args -- mkfs.erofs -z lz4 -T 0 --all-root -L nix-store \
                 --mount-point=/nix/store $out store \
               || {
                 echo "bwrap path failed; copying closure" >&2
                 cp -a $(cat ${closure}/store-paths) store/
-                mkfs.erofs -T 0 --all-root -L nix-store \
+                mkfs.erofs -z lz4 -T 0 --all-root -L nix-store \
                   --mount-point=/nix/store $out store
               }
           '';
