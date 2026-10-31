@@ -165,7 +165,10 @@ Each profile (`profiles.<name>`):
 | `gpu` | bool | `false` | munix: pass GPU through |
 | `munixPackage` | nullOr package | `null` | munix runner (consumer-provided; deniac doesn't pin libkrun/KVM) |
 | `munixClosure` | nullOr str | `null` | the NixOS toplevel the microVM boots |
-| `storeSlice` | nullOr `{ image, sandboxPaths; }` | `null` | opt-in closure-only `/nix/store`: `--store-dev <erofs image>` + `--sandbox-store <store-paths file>`; needs the forked munix (`feat/closure-only-store`, upstream PR clan/munix #38) |
+| `storeSlice.mode` | `"closure"` \| `"erofs"` | `"closure"` | how the restricted store is assembled — see `storeSlice` below |
+| `storeSlice.storePaths` | str (`…/store-paths`) | — | the closureInfo `store-paths` **FILE** (the type refuses the directory) |
+| `storeSlice.image` | nullOr str | `null` | `erofs` mode only: the prebuilt erofs image (`--store-dev`); required there, asserted |
+| `storeSlice` | nullOr `{ mode, storePaths, image?; }` | `null` | opt-in closure-only `/nix/store` — the guest sees only its own closure's paths. **`"closure"` (default)** bind-mounts those paths off the host store as virtiofs submounts: **zero extra disk**, N guests cost nothing extra. **`"erofs"`** boots one prebuilt block-device image instead: a single mount at boot, but a full copy of the closure **per guest** (2.65 GiB compressed each) — use only where boot latency genuinely matters. Both need the forked munix (`feat/store-mode`, upstream PR clan/munix #40) |
 | `extraPackages` | [package] | `[]` | Extra PATH packages |
 | `env` | attrs | `{}` | Extra env vars in the compartment |
 
@@ -191,11 +194,13 @@ den.aspects.tux.homeManager.deniac.ai.hermes = {
       munixPackage = inputs.hermes-munix-guest.packages.x86_64-linux.munix;
       munixClosure = toString inputs.hermes-munix-guest.packages.x86_64-linux.researcher-toplevel;
       # Optional: closure-only /nix/store (the guest sees only its own
-      # closure, not the host store). Both files come from the same
-      # template input (researcher-store-erofs / researcher-store-paths).
+      # closure, not the host store). The default `mode = "closure"`
+      # bind-mounts the closure's paths off the host store — no image, no
+      # extra disk. Note the `/store-paths` suffix: that's the FILE inside
+      # the closureInfo output, not the output directory itself — the
+      # option type refuses the directory form (it fails at boot, not eval).
       storeSlice = {
-        image = toString inputs.hermes-munix-guest.packages.x86_64-linux.researcher-store-erofs;
-        sandboxPaths = toString inputs.hermes-munix-guest.packages.x86_64-linux.researcher-store-paths;
+        storePaths = "${inputs.hermes-munix-guest.packages.x86_64-linux.researcher-store-paths}/store-paths";
       };
       bindReadwrite = [ "/home/tux/research-out" ];   # its only write target
       mcpServers.donsetch.command = "donsetch";
@@ -248,6 +253,8 @@ entire visible `/nix/store`. It is built by the
 | --- | --- |
 | `researcher` | the wrapped `.munix` launcher (bakes `MICROVM_DEFAULT_COMMAND`) — run directly |
 | `researcher-toplevel` | the **raw toplevel** — what `munixClosure` points at |
+| `researcher-store-paths` | the `pkgs.closureInfo` output — its `store-paths` file is what `storeSlice.storePaths` points at (both modes) |
+| `researcher-store-erofs` | the erofs block-device image — only needed for `storeSlice.mode = "erofs"`. Harmless to leave unreferenced: Nix never builds what nothing points at |
 | `munix` | the runner binary the guest was built against (re-exposed so one input suffices) |
 
 The guest must be built with the **munix-pinned nixpkgs**

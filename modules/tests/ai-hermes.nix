@@ -12,6 +12,9 @@
 #   * declared bind dirs appear; the per-profile `-p <name>` is baked in.
 #   * the munix launcher maps network="none" to `--no-network` and wires
 #     the closure + virtiofs binds.
+#   * the store slice emits the right munix flags per mode: `closure`
+#     (bind-mount the host store's own bytes, zero extra disk) and
+#     `erofs` (the block-device copy), and never mixes the two.
 #   * the declared config renders mcp_servers + settings.
 #
 # Full home-manager activation (the merge actually running against a live
@@ -191,8 +194,82 @@ in
       }
     );
 
-    # ── munix tier: opt-in store-slice (--store-dev/--sandbox-store) ─
-    test-munix-store-slice = denTest (
+    # ── munix tier: store slice, CLOSURE mode (the default) ─────────
+    # Closure mode binds each closure path as its own virtiofs submount
+    # read straight off the host store: no image is built, so N guests
+    # cost zero extra disk. The launcher must emit
+    # `--store-mode closure --store-paths <file>` and NOTHING from the
+    # erofs path — a stray `--store-dev` flips munix into block-device
+    # mode (munix infers it, .munix-wrapped:128-132) and silently puts a
+    # multi-gigabyte copy of the closure back on the host per guest.
+    # Tested with the mode given explicitly AND omitted, so the lib's own
+    # default is pinned too.
+    test-munix-store-slice-closure = denTest (
+      { inputs, den, deniac, ... }:
+      let
+        pkgs = import inputs.nixpkgs { system = "x86_64-linux"; };
+        hj = import ../../lib/hermes-jail.nix { inherit (pkgs) lib; };
+        base = {
+          tier = "munix";
+          bindReadonly = [ ];
+          bindReadwrite = [ ];
+          mcpServers = { };
+          settings = { };
+          soul = null;
+          network = "full";
+          gpu = false;
+          munixPackage = pkgs.hello; # stub for the munix binary path
+          munixClosure = "/nix/store/fake-researcher-toplevel";
+          extraPackages = [ ];
+          env = { };
+        };
+        explicit = builtins.readFile
+          ((hj.mkMunixLauncher pkgs pkgs.hello "researcher" (base // {
+            storeSlice = {
+              mode = "closure";
+              storePaths = "/nix/store/fake-closure-info/store-paths";
+            };
+          })) + "/bin/hermes-munix-researcher");
+        implicit = builtins.readFile
+          ((hj.mkMunixLauncher pkgs pkgs.hello "researcher" (base // {
+            storeSlice = {
+              storePaths = "/nix/store/fake-closure-info/store-paths";
+            };
+          })) + "/bin/hermes-munix-researcher");
+      in
+      {
+        expr = {
+          hasStoreModeClosure = has "--store-mode closure" explicit;
+          hasStorePaths =
+            has "--store-paths /nix/store/fake-closure-info/store-paths" explicit;
+          noStoreDev = !(has "--store-dev" explicit);
+          noSandboxStore = !(has "--sandbox-store" explicit);
+          # the default (mode omitted) is closure too
+          defaultIsClosure =
+            has "--store-mode closure" implicit
+            && !(has "--store-dev" implicit);
+          # the guest closure and the profile selector survive the change
+          stillHasClosure = has "/nix/store/fake-researcher-toplevel" explicit;
+          runsDashP = has "hermes -p researcher" explicit;
+        };
+        expected = {
+          hasStoreModeClosure = true;
+          hasStorePaths = true;
+          noStoreDev = true;
+          noSandboxStore = true;
+          defaultIsClosure = true;
+          stillHasClosure = true;
+          runsDashP = true;
+        };
+      }
+    );
+
+    # ── munix tier: store slice, EROFS mode (opt-in) ────────────────
+    # The block-device path stays supported as the boot-latency opt-in.
+    # It must emit all three flags: munix hard-errors on `--store-mode
+    # erofs` without `--store-dev`, and erofs needs `--sandbox-store` for
+    # the paths muvm reads pre-activation.
+    test-munix-store-slice-erofs = denTest (
       { inputs, den, deniac, ... }:
       let
         pkgs = import inputs.nixpkgs { system = "x86_64-linux"; };
@@ -209,26 +286,32 @@ in
           munixPackage = pkgs.hello; # stub for the munix binary path
           munixClosure = "/nix/store/fake-researcher-toplevel";
           storeSlice = {
+            mode = "erofs";
             image = "/nix/store/fake-researcher-store-erofs";
-            sandboxPaths = "/nix/store/fake-closure-info/store-paths";
+            storePaths = "/nix/store/fake-closure-info/store-paths";
           };
           extraPackages = [ ];
           env = { };
         };
         launcher = builtins.readFile
-          ((hj.mkMunixLauncher pkgs pkgs.hello "researcher" profile) + "/bin/hermes-munix-researcher");
+          ((hj.mkMunixLauncher pkgs pkgs.hello "researcher" profile)
+            + "/bin/hermes-munix-researcher");
       in
       {
         expr = {
+          hasStoreModeErofs = has "--store-mode erofs" launcher;
           hasStoreDev = has "--store-dev /nix/store/fake-researcher-store-erofs" launcher;
-          hasSandboxStore = has "--sandbox-store /nix/store/fake-closure-info/store-paths" launcher;
-          stillHasClosure = has "/nix/store/fake-researcher-toplevel" launcher;
+          hasSandboxStore =
+            has "--sandbox-store /nix/store/fake-closure-info/store-paths" launcher;
+          # closure's own flag must NOT leak into the erofs invocation
+          noStorePathsFlag = !(has "--store-paths" launcher);
           runsDashP = has "hermes -p researcher" launcher;
         };
         expected = {
+          hasStoreModeErofs = true;
           hasStoreDev = true;
           hasSandboxStore = true;
-          stillHasClosure = true;
+          noStorePathsFlag = true;
           runsDashP = true;
         };
       }
