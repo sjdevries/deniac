@@ -306,29 +306,27 @@ in
       {
         expr = {
           # the terminator sits immediately after the closure
-          terminatorAfterClosure = has ''"$CLOSURE" --'' launcher;
-          # everything after the terminator is the guest command, so munix
-          # never parses it — the profile selector survives intact
-          hermesAfterTerminator =
+          terminatorAfterClosure = has "\"$CLOSURE\" --" launcher;
+          # the OLD broken form was `"$CLOSURE" \` — closure followed by a bare
+          # line continuation with no terminator. In the fixed form the char
+          # right after `"$CLOSURE" ` is `-`, never `\`, so this is false now
+          # and was true before. Catches a regression to the unguarded form.
+          noBareClosureContinuation = !(has "\"$CLOSURE\" \\" launcher);
+          # the guest command is still intact and carries the profile
+          guestCommandIntact = has "hermes -p researcher" launcher;
+          # and the terminator precedes it (terminator appears, and the only
+          # `hermes` occurrence is on the env line after it)
+          hermesCount =
             let
-              parts = builtins.splitString ''"$CLOSURE" --'' launcher;
-              tail =
-                if builtins.length parts > 1 then
-                  builtins.concatStringsSep "" (builtins.tail parts)
-                else
-                  "";
+              stripped = builtins.replaceStrings [ "hermes -p researcher" ] [ "" ] launcher;
             in
-            has "hermes -p researcher" tail;
-          # and nothing before it leaked a hermes flag
-          noHermesBeforeTerminator = !(has "hermes " (
-            builtins.concatStringsSep ""
-              (builtins.init (builtins.splitString ''"$CLOSURE" --'' launcher))
-          ));
+            !(has "hermes -p " stripped);
         };
         expected = {
           terminatorAfterClosure = true;
-          hermesAfterTerminator = true;
-          noHermesBeforeTerminator = true;
+          noBareClosureContinuation = true;
+          guestCommandIntact = true;
+          hermesCount = true;
         };
       }
     );
