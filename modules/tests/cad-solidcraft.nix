@@ -69,7 +69,7 @@
         den.aspects.igloo.includes = [ deniac.cad.solidcraft ];
         den.aspects.igloo.nixos.deniac.cad.solidcraft = {
           enable = true;
-          managedBy = "nix-onyxia";
+          managedBy = "nix-testbed";
           checkForUpdates = true;
           windowSystem = "wayland";
           controlPort = 27900;
@@ -83,7 +83,7 @@
           enable = true;
           # checkForUpdates = true means the variable is NOT set.
           env = {
-            SOLIDCRAFT_MANAGED_BY = "nix-onyxia";
+            SOLIDCRAFT_MANAGED_BY = "nix-testbed";
             SOLIDCRAFT_WAYLAND = "1";
             SOLIDCRAFT_CONTROL_PORT = "27900";
           };

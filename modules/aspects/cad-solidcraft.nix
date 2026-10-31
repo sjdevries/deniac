@@ -23,9 +23,7 @@
 # package manager that does not own its own updates is not a package
 # manager. Flip `checkForUpdates = true` only if you want the nag back.
 #
-# What this aspect CANNOT do (verified 2026-10-31 against upstream main;
-# full analysis in the private research doc
-# `research/solidcraft-security-review.md`):
+# What this aspect CANNOT do (verified 2026-10-31 against upstream 0.28.0):
 #
 #   * Force the MCP control channel off. `agent_control` defaults to true,
 #     so a stock install listens on 127.0.0.1:27878 at start-up. It is
@@ -33,16 +31,23 @@
 #     dir) and file-access-scoped, but there is NO environment override —
 #     only Preferences > AI. `controlPort` here only relocates it.
 #   * Stop `connect_ai_apps` (default true) from adding a `solidcraft` MCP
-#     entry to other installed AI clients' config files at launch.
+#     entry to other installed AI clients' config files. Same story: a
+#     per-user preference with no environment override.
+#   * Suppress either of them in safe mode. Safe mode skips preference loading
+#     entirely, so both fall back to their `true` defaults — a user who
+#     turned them off gets them back on a `--safe-mode` run. Reported
+#     upstream as https://github.com/tangency-labs/solidcraft/issues/10217.
 #
 # Both are per-user preferences in `app.ron`, which stays user-owned: a
 # declarative read-only settings file would break the app's ability to save
-# its own preferences. Turn them off in the app, or upstream them.
+# its own preferences. Turn them off in the app, or wait on the upstream
+# issue above — if a `SOLIDCRAFT_AGENT_CONTROL` env override lands there,
+# it drops straight into `extraWrapperEnv` below with no code change.
 #
 # Usage (a desktop host that gets SolidCraft):
 #
-#   den.aspects.onyxia.includes = [ deniac.cad.solidcraft ];
-#   den.aspects.onyxia.nixos.deniac.cad.solidcraft.enable = true;
+#   den.aspects.desktop.includes = [ deniac.cad.solidcraft ];
+#   den.aspects.desktop.nixos.deniac.cad.solidcraft.enable = true;
 #
 # That is the whole thing — the upstream package already carries the
 # .desktop entry, the MIME types and the hicolor icons, so installing it
