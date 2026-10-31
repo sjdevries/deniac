@@ -273,5 +273,175 @@ in
         };
       }
     );
+
+    # ── munix tier: `--` terminator before the guest command ─────────
+    # munix parses its OWN options anywhere on the command line, so without
+    # a `--` terminator it swallows the hermes flags: `-z` dies with
+    # "munix: unknown option: -z", and worse, hermes' `-p <profile>` is
+    # consumed by munix's `-p|--publish` — silently turning the profile
+    # selector into a port publish. Verified live 2026-10-30.
+    test-munix-command-terminator = denTest (
+      { inputs, den, deniac, ... }:
+      let
+        pkgs = import inputs.nixpkgs { system = "x86_64-linux"; };
+        hj = import ../../lib/hermes-jail.nix { inherit (pkgs) lib; };
+        profile = {
+          tier = "munix";
+          bindReadonly = [ ];
+          bindReadwrite = [ ];
+          mcpServers = { };
+          settings = { };
+          soul = null;
+          network = "full";
+          gpu = false;
+          munixPackage = pkgs.hello;
+          munixClosure = "/nix/store/fake-researcher-toplevel";
+          storeSlice = null;
+          extraPackages = [ ];
+          env = { };
+        };
+        launcher = builtins.readFile
+          ((hj.mkMunixLauncher pkgs pkgs.hello "researcher" profile) + "/bin/hermes-munix-researcher");
+      in
+      {
+        expr = {
+          # the terminator sits immediately after the closure
+          terminatorAfterClosure = has ''"$CLOSURE" --'' launcher;
+          # everything after the terminator is the guest command, so munix
+          # never parses it — the profile selector survives intact
+          hermesAfterTerminator =
+            let
+              parts = builtins.splitString ''"$CLOSURE" --'' launcher;
+              tail =
+                if builtins.length parts > 1 then
+                  builtins.concatStringsSep "" (builtins.tail parts)
+                else
+                  "";
+            in
+            has "hermes -p researcher" tail;
+          # and nothing before it leaked a hermes flag
+          noHermesBeforeTerminator = !(has "hermes " (
+            builtins.concatStringsSep ""
+              (builtins.init (builtins.splitString ''"$CLOSURE" --'' launcher))
+          ));
+        };
+        expected = {
+          terminatorAfterClosure = true;
+          hermesAfterTerminator = true;
+          noHermesBeforeTerminator = true;
+        };
+      }
+    );
+
+    # ── munix tier: headless profiles disable wayland + pipewire ─────
+    # `--no-gpu` alone still leaves munix binding the host Wayland socket,
+    # so a headless host fails pre-boot with
+    #   bwrap: Can't find source path $XDG_RUNTIME_DIR/wayland-1
+    test-munix-headless-flags = denTest (
+      { inputs, den, deniac, ... }:
+      let
+        pkgs = import inputs.nixpkgs { system = "x86_64-linux"; };
+        hj = import ../../lib/hermes-jail.nix { inherit (pkgs) lib; };
+        base = {
+          tier = "munix";
+          bindReadonly = [ ];
+          bindReadwrite = [ ];
+          mcpServers = { };
+          settings = { };
+          soul = null;
+          network = "full";
+          munixPackage = pkgs.hello;
+          munixClosure = "/nix/store/fake-toplevel";
+          storeSlice = null;
+          extraPackages = [ ];
+          env = { };
+        };
+        headless = builtins.readFile
+          ((hj.mkMunixLauncher pkgs pkgs.hello "r1" (base // { gpu = false; }))
+            + "/bin/hermes-munix-r1");
+        withGpu = builtins.readFile
+          ((hj.mkMunixLauncher pkgs pkgs.hello "r2" (base // { gpu = true; }))
+            + "/bin/hermes-munix-r2");
+      in
+      {
+        expr = {
+          headlessNoWayland = has "--no-wayland" headless;
+          headlessNoPipewire = has "--no-pipewire" headless;
+          gpuProfileOmitsWaylandFlag = !(has "--no-wayland" withGpu);
+          gpuProfileOmitsPipewireFlag = !(has "--no-pipewire" withGpu);
+          gpuProfileOmitsNoGpu = !(has "--no-gpu" withGpu);
+        };
+        expected = {
+          headlessNoWayland = true;
+          headlessNoPipewire = true;
+          gpuProfileOmitsWaylandFlag = true;
+          gpuProfileOmitsPipewireFlag = true;
+          gpuProfileOmitsNoGpu = true;
+        };
+      }
+    );
+
+    # ── declared config: provider inference for a custom base_url ────
+    # hermes needs an explicit model.provider; a declared base_url alone
+    # fails with ProviderNotConfiguredError. The inference must fill it in
+    # WITHOUT ever overriding an explicitly declared provider, and must not
+    # invent a model section for profiles that declare none.
+    test-declared-config-provider-inference = denTest (
+      { inputs, den, deniac, ... }:
+      let
+        pkgs = import inputs.nixpkgs { system = "x86_64-linux"; };
+        hj = import ../../lib/hermes-jail.nix { inherit (pkgs) lib; };
+        base = {
+          tier = "bwrap";
+          bindReadonly = [ ];
+          bindReadwrite = [ ];
+          mcpServers = { };
+          soul = null;
+          network = "full";
+          gpu = false;
+          munixPackage = null;
+          munixClosure = null;
+          extraPackages = [ ];
+          env = { };
+        };
+        # base_url declared, provider omitted
+        inferred = hj.declaredConfig "p1" (base // {
+          settings = {
+            model = {
+              base_url = "http://192.168.1.1:8731/v1";
+              default = "halogen-qwen3.8-flash-next";
+            };
+          };
+        });
+        # base_url AND provider declared -> explicit provider wins
+        explicit = hj.declaredConfig "p2" (base // {
+          settings = {
+            model = {
+              provider = "openrouter";
+              base_url = "http://192.168.1.1:8731/v1";
+              default = "some-model";
+            };
+          };
+        });
+        # no model section at all -> untouched
+        noModel = hj.declaredConfig "p3" (base // { settings = { }; });
+      in
+      {
+        expr = {
+          inferredHasProvider = has "provider" inferred;
+          inferredIsCustom = has "custom" inferred;
+          explicitKeepsProvider = has "openrouter" explicit;
+          explicitNotOverridden = !(has "custom" explicit);
+          noModelUntouched = !(has "provider" noModel) && !(has "custom" noModel);
+        };
+        expected = {
+          inferredHasProvider = true;
+          inferredIsCustom = true;
+          explicitKeepsProvider = true;
+          explicitNotOverridden = true;
+          noModelUntouched = true;
+        };
+      }
+    );
   };
 }

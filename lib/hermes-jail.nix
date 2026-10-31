@@ -26,7 +26,29 @@ rec {
   # JSON is a subset of YAML, so this renders a valid config.yaml body.
   # `mcp_servers` is the compartment's tools; `settings` are extra
   # behavioral keys merged in (declared wins over learned).
+  #
+  # Provider inference: hermes requires an EXPLICIT `model.provider`. A
+  # profile that declares only `model.base_url` + `model.default` fails at
+  # agent init with
+  #   ProviderNotConfiguredError: No LLM provider configured
+  # (verified live against hermes-agent 0.22.5 in the munix guest). A
+  # declared `base_url` is by definition a custom OpenAI-compatible
+  # endpoint, so fill in `provider = "custom"` — but ONLY when the profile
+  # declares a base_url and does NOT already declare a provider, so an
+  # explicit provider always wins and a profile that declares no `model`
+  # section at all is left completely untouched.
   declaredConfig = name: prof:
+    let
+      settings = prof.settings or { };
+      model = if builtins.isAttrs (settings.model or null) then settings.model else null;
+      needsProvider =
+        model != null && (model ? base_url) && !(model ? provider);
+      settings' =
+        if needsProvider then
+          settings // { model = model // { provider = "custom"; }; }
+        else
+          settings;
+    in
     builtins.toJSON (
       {
         mcp_servers = lib.mapAttrs (_: s: {
@@ -35,7 +57,7 @@ rec {
           env = s.env;
         }) prof.mcpServers;
       }
-      // prof.settings
+      // settings'
     );
 
   renderProfileConfig = pkgs: name: prof:
@@ -133,6 +155,12 @@ rec {
     let
       netFlag = if prof.network == "none" then "--no-network" else "";
       gpuFlag = if !prof.gpu then "--no-gpu" else "";
+      # A GPU-less profile is headless, and `--no-gpu` alone is NOT enough:
+      # munix still tries to bind the host Wayland socket, so on a headless
+      # host the run dies before the VM starts with
+      #   bwrap: Can't find source path $XDG_RUNTIME_DIR/wayland-1
+      # Verified live 2026-10-30. Audio has the same problem via pipewire.
+      headlessFlags = if !prof.gpu then "--no-wayland --no-pipewire" else "";
       # Opt-in closure-only /nix/store (munix --store-dev, our fork
       # branch feat/closure-only-store / upstream clan-munix PR #38):
       # the guest store comes from the erofs image, and --sandbox-store
@@ -176,11 +204,11 @@ rec {
       PH="$HOME/.hermes/profiles/${name}"
       mkdir -p "$PH/home"
       exec ${munixPkg}/bin/munix \
-        ${netFlag} ${gpuFlag} \
+        ${netFlag} ${gpuFlag} ${headlessFlags} \
         ${storeFlags} \
         --bind "$PH" "$PH" \
         ${roBinds} ${rwBinds} \
-        "$CLOSURE" \
+        "$CLOSURE" -- \
         env ${keyEnv}HERMES_HOME="$PH" HOME="$PH/home" hermes -p ${name} "$@"
     '';
 }
