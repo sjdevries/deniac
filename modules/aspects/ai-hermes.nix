@@ -206,7 +206,7 @@
                 sandboxPaths = lib.mkOption {
                   type = lib.types.addCheck lib.types.str (v:
                     lib.strings.hasSuffix "/store-paths" v
-                    || lib.abort ''
+                    || throw ''
                       deniac.ai.hermes: storeSlice.sandboxPaths must be the closureInfo
                       store-paths FILE, not the closureInfo directory. Got:
 
