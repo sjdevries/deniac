@@ -1,8 +1,7 @@
 # deniac.ai.hermes — Hermes Agent (Nous Research) in role-compartment jails.
 #
-# This aspect implements the security model documented in the fleet's
-# research/hermes-profile-security-model.md: the agent is split into
-# least-privilege role compartments (researcher / coder / reviewer /
+# Security model: the agent is split into least-privilege role
+# compartments (researcher / coder / reviewer /
 # creator), each a Hermes *profile* (NousResearch/hermes-agent's native
 # `~/.hermes/profiles/<name>/` isolation — per-profile config.yaml, .env,
 # SOUL.md, memories, sessions, skills). Prompt injection is a

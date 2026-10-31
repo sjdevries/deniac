@@ -76,8 +76,8 @@ export HF_TOKEN=…          # https://huggingface.co → settings → Access To
 
 They are sent as `Authorization: Bearer …` headers to the API/download
 but are **never written into the emitted entry** — the entry is public
-config. In the fleet these come from **sops-nix / agenix** (the secret
-wiring is a tracked TODO; see `research/ai-model-store-sharing.md` §8.4).
+config. Supply them from your own secret manager (sops-nix, agenix, …);
+the wiring here is a tracked TODO.
 
 ## Implementation
 
@@ -93,5 +93,4 @@ wiring is a tracked TODO; see `research/ai-model-store-sharing.md` §8.4).
 deniac-original. The CivitAI / HuggingFace API shapes (downloadUrl,
 `hashes.SHA256`, tree `lfs.oid`) were verified live against the public
 APIs. The "browse in the real site, capture with a CLI" pattern is the
-deniac answer to Stability Matrix's in-app model browser — see
-`research/ai-model-store-sharing.md` §8.3.
+deniac answer to Stability Matrix's in-app model browser.

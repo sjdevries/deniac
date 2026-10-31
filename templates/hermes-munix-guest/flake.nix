@@ -225,7 +225,7 @@
           # ── The three agents (all headless hermes, no graphics) ──────
           # Each is a SEPARATE closure + store slice: different tools,
           # different blast radius. The ROLE (binds, soul, authority) is
-          # set in the CONSUMER flake (the fleet's ai.hermes profile);
+          # set in the CONSUMER flake (your fleet's ai.hermes profile);
           # this template only supplies the per-role GUEST (app + tools).
 
           # Researcher — web-facing gatherer. Read-only reach: git clones
