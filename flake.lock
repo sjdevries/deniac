@@ -329,6 +329,22 @@
         "url": "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz"
       }
     },
+    "nixpkgs_5": {
+      "locked": {
+        "lastModified": 1791594108,
+        "narHash": "sha256-XK4KceonkwD8LuMAt/vNrz982mXJM5jeHAxMwsUXXAQ=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "6510408d147d8c5e6d76043e899e9251756f6a75",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "ace-step-comfyui": "ace-step-comfyui",
@@ -337,7 +353,27 @@
         "import-tree": "import-tree",
         "llm-agents": "llm-agents",
         "nix-amd-ai": "nix-amd-ai",
-        "nixpkgs": "nixpkgs_4"
+        "nixpkgs": "nixpkgs_4",
+        "solidcraft": "solidcraft"
+      }
+    },
+    "solidcraft": {
+      "inputs": {
+        "nixpkgs": "nixpkgs_5"
+      },
+      "locked": {
+        "lastModified": 1793429714,
+        "narHash": "sha256-NbsDAqa5E9zZkgs0nR3mLMPRiI1+D9qR8ge36oQDH5s=",
+        "owner": "tangency-labs",
+        "repo": "solidcraft",
+        "rev": "44d7c1fb6f45b0c48f05f5730375c3071ff6dfea",
+        "type": "github"
+      },
+      "original": {
+        "owner": "tangency-labs",
+        "repo": "solidcraft",
+        "rev": "44d7c1fb6f45b0c48f05f5730375c3071ff6dfea",
+        "type": "github"
       }
     },
     "systems": {

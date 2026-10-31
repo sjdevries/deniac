@@ -29,6 +29,16 @@
       url = "github:ace-step/ACE-Step-ComfyUI";
       flake = false;
     };
+    # SolidCraft — pure-Rust parametric 3D CAD (desktop + wasm + headless
+    # CLI + MCP server). Pinned to the EXACT commit reviewed on 2026-10-31
+    # (v0.28.0, `main`, 44d7c1fb): a clean-room Rust app on the truck
+    # B-rep kernel, MIT OR Apache-2.0, no GPL/LGPL, no telemetry,
+    # workspace `unsafe_code = "forbid"`, and its vendored truck patches
+    # verified against the upstream crates.io tarball.
+    # This project moves at ~140 commits/day across 270+ contributors, so
+    # the pin is the review boundary: re-run the safety review before
+    # moving it. Consumed by the `cad.solidcraft` aspect.
+    solidcraft.url = "github:tangency-labs/solidcraft/44d7c1fb6f45b0c48f05f5730375c3071ff6dfea";
   };
 
   outputs = inputs: (
