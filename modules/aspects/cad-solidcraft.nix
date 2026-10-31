@@ -82,7 +82,12 @@ in
       # The upstream package for this host's system. SolidCraft's flake
       # builds x86_64-linux, aarch64-linux and aarch64-darwin; anything
       # else gets a message that says so instead of "attribute missing".
-      upstreamPackage = solidcraftFlake.packages.${pkgs.system} or (builtins.throw ''
+      #
+      # The trailing `.solidcraft` is load-bearing: `packages.<system>` is
+      # the whole per-system SET ({ default, solidcraft }), not a package,
+      # so selecting only the system hands the `package`-typed option an
+      # attrset and the module system rejects it at activation time.
+      upstreamPackage = solidcraftFlake.packages.${pkgs.system}.solidcraft or (builtins.throw ''
         deniac.cad.solidcraft: upstream solidcraft has no package for system
         "${pkgs.system}". Its flake builds x86_64-linux, aarch64-linux and
         aarch64-darwin only.

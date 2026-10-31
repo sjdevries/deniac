@@ -1,10 +1,11 @@
 # Tests for `cad.solidcraft` — same fresh-eval pattern as tests/ai-comfyui.nix.
 #
-# What is under test is the aspect's own logic: the option surface and the
-# environment it derives for the wrapper (`wrapperEnv`). The wrapper
-# *build* (symlinkJoin + wrapProgram over the upstream package) is not
-# exercised here — forcing it would build SolidCraft, which is a ~758k-line
-# Rust app and belongs in a real build, not a unit test.
+# What is under test is the aspect's own logic: the option surface, the
+# type of the package it resolves to, and the environment it derives for
+# the wrapper (`wrapperEnv`). The wrapper *build* (symlinkJoin +
+# wrapProgram over the upstream package) is not exercised here — forcing
+# it would build SolidCraft, which is a ~758k-line Rust app and belongs
+# in a real build, not a unit test.
 
 { denTest, ... }:
 {
@@ -141,6 +142,30 @@
           renderer = "gl";
           stillManaged = "nix";
           extra = "gl";
+        };
+      }
+    );
+    # The check that was missing when this aspect first shipped, and the
+    # reason it reached a real build broken: selecting `packages.<system>`
+    # instead of `packages.<system>.solidcraft` hands the package-typed
+    # option the whole per-system SET ({ default, solidcraft }). The
+    # module system rejects that at activation — AFTER every
+    # env-derivation test above had already passed green. Forcing the
+    # leaf attributes here catches it at unit-test time instead.
+    test-package-resolves-to-derivation = denTest (
+      { inputs, den, deniac, igloo, ... }:
+      {
+        imports = [ (inputs.den.namespace "deniac" [ inputs.self ]) ];
+        den.hosts.x86_64-linux.igloo = { };
+        den.aspects.igloo.includes = [ deniac.cad.solidcraft ];
+
+        expr = {
+          isDerivation = builtins.isDerivation igloo.deniac.cad.solidcraft.package;
+          version = igloo.deniac.cad.solidcraft.package.version or null;
+        };
+        expected = {
+          isDerivation = true;
+          version = "0.28.0";
         };
       }
     );
