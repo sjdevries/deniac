@@ -204,9 +204,35 @@
                   description = "Path to the prebuilt erofs store image (--store-dev argument).";
                 };
                 sandboxPaths = lib.mkOption {
-                  type = lib.types.str;
+                  type = lib.types.addCheck lib.types.str (v:
+                    lib.strings.hasSuffix "/store-paths" v
+                    || lib.abort ''
+                      deniac.ai.hermes: storeSlice.sandboxPaths must be the closureInfo
+                      store-paths FILE, not the closureInfo directory. Got:
+
+                        ${v}
+
+                      munix consumes --sandbox-store as a shell redirect
+                      (.munix-wrapped):
+
+                        while read -r p; do STORE_BIND+=("--ro-bind" "$p" "$p"); done < "$SANDBOX_STORE"
+
+                      Pointed at the directory that read fails immediately with
+                      "read: 0: read error: Is a directory", munix then dies on
+                      "bwrap: execvp muvm: No such file or directory" and the
+                      guest never boots. Nothing catches this at eval otherwise,
+                      so the type refuses it here. Write it as:
+
+                        sandboxPaths = "''${toString closureInfo}/store-paths";
+                    '');
                   example = "/nix/store/efgh-closure-info/store-paths";
-                  description = "Path to the closureInfo store-paths file (--sandbox-store argument).";
+                  description = ''
+                    Path to the closureInfo `store-paths` FILE passed as munix's
+                    `--sandbox-store` argument — the newline-delimited list of host
+                    paths muvm must read pre-activation. This is the file
+                    `pkgs.closureInfo` writes inside its output directory, not that
+                    directory itself; the type above refuses the directory form.
+                  '';
                 };
               };
             });
@@ -214,7 +240,7 @@
             example = lib.literalExpression ''
               {
                 image = toString guest.packages.''${system}.researcher-store-erofs;
-                sandboxPaths = toString guest.packages.''${system}.researcher-store-paths;
+                sandboxPaths = "''${toString guest.packages.''${system}.researcher-store-paths}/store-paths";
               }
             '';
             description = ''
