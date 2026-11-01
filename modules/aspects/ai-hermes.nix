@@ -197,24 +197,46 @@
           storeSlice = lib.mkOption {
             type = lib.types.nullOr (lib.types.submodule {
               options = {
-                image = lib.mkOption {
-                  type = lib.types.str;
-                  example = "/nix/store/abcd-researcher-store-erofs";
-                  description = "Path to the prebuilt erofs store image (--store-dev argument).";
+                mode = lib.mkOption {
+                  type = lib.types.enum [ "closure" "erofs" ];
+                  default = "closure";
+                  description = ''
+                    How the guest's /nix/store is restricted.
+
+                    `"closure"` (default) — munix `--store-mode closure`:
+                    every path in `storePaths` becomes its own virtiofs
+                    submount. The guest reads the host store's own bytes,
+                    so the restriction costs ZERO extra disk — N guests
+                    share the store they already occupy. This is what a
+                    fleet of sandboxed VMs should run.
+
+                    `"erofs"` — the closure is materialised as one erofs
+                    block-device image (`image`) mounted at /nix/store by
+                    micro-activate. Cheaper at boot (one mount instead of
+                    ~1.2k submounts) but it is a full COPY of the closure:
+                    2.65 GiB compressed per guest, and every additional
+                    sandboxed app adds another one. Use only where boot
+                    latency genuinely matters.
+
+                    Both modes need a munix that has `--store-mode`
+                    (our fork branch `feat/store-mode`; upstream
+                    clan/munix PR #40).
+                  '';
                 };
-                sandboxPaths = lib.mkOption {
+
+                storePaths = lib.mkOption {
                   type = lib.types.addCheck lib.types.str (v:
                     lib.strings.hasSuffix "/store-paths" v
                     || throw ''
-                      deniac.ai.hermes: storeSlice.sandboxPaths must be the closureInfo
+                      deniac.ai.hermes: storeSlice.storePaths must be the closureInfo
                       store-paths FILE, not the closureInfo directory. Got:
 
                         ${v}
 
-                      munix consumes --sandbox-store as a shell redirect
-                      (.munix-wrapped):
+                      munix consumes it as a shell redirect (closure mode
+                      .munix-wrapped fd 16, erofs mode --sandbox-store):
 
-                        while read -r p; do STORE_BIND+=("--ro-bind" "$p" "$p"); done < "$SANDBOX_STORE"
+                        while read -r p; do ... "--ro-bind" "$p" "$p" ... done < "$STORE_PATHS"
 
                       Pointed at the directory that read fails immediately with
                       "read: 0: read error: Is a directory", munix then dies on
@@ -222,15 +244,31 @@
                       guest never boots. Nothing catches this at eval otherwise,
                       so the type refuses it here. Write it as:
 
-                        sandboxPaths = "''${toString closureInfo}/store-paths";
+                        storePaths = "''${toString closureInfo}/store-paths";
                     '');
                   example = "/nix/store/efgh-closure-info/store-paths";
                   description = ''
-                    Path to the closureInfo `store-paths` FILE passed as munix's
-                    `--sandbox-store` argument — the newline-delimited list of host
-                    paths muvm must read pre-activation. This is the file
-                    `pkgs.closureInfo` writes inside its output directory, not that
-                    directory itself; the type above refuses the directory form.
+                    Path to the closureInfo `store-paths` FILE — the
+                    newline-delimited list of host store paths this guest's
+                    closure needs. In `"closure"` mode it is passed as munix's
+                    `--store-paths` (one virtiofs bind per line); in `"erofs"`
+                    mode as `--sandbox-store` (the paths muvm must read
+                    pre-activation). This is the file `pkgs.closureInfo` writes
+                    inside its output directory, not that directory itself; the
+                    type above refuses the directory form.
+                  '';
+                };
+
+                image = lib.mkOption {
+                  type = lib.types.nullOr lib.types.str;
+                  default = null;
+                  example = "/nix/store/abcd-researcher-store-erofs";
+                  description = ''
+                    `"erofs"` mode only: the prebuilt erofs store image,
+                    passed as munix's `--store-dev`. Must be set when
+                    `mode = "erofs"` (checked by an assertion on the
+                    aspect); leave it `null` in `"closure"` mode, where
+                    nothing is materialised.
                   '';
                 };
               };
@@ -238,23 +276,20 @@
             default = null;
             example = lib.literalExpression ''
               {
-                image = toString guest.packages.''${system}.researcher-store-erofs;
-                sandboxPaths = "''${toString guest.packages.''${system}.researcher-store-paths}/store-paths";
+                mode = "closure";
+                storePaths = "''${toString guest.packages.''${system}.researcher-store-paths}/store-paths";
               }
             '';
             description = ''
-              munix tier: closure-only /nix/store (opt-in). When set, the
-              launcher passes `--store-dev <image>` — the guest's
-              /nix/store comes from this erofs block-device image,
-              mounted by micro-activate before any closure path is read —
-              plus `--sandbox-store <sandboxPaths>`, the host paths muvm
-              must read pre-activation. `null` keeps the whole-host store
-              bind (the default). Requires a munix that has `--store-dev`
-              (our fork branch `feat/closure-only-store`; upstream
-              clan/munix PR #38). Build the pair with `pkgs.closureInfo`
-              + `mkfs.erofs` — see the hermes-munix-guest template's
-              `researcher-store-erofs` / `researcher-store-paths`
-              outputs.
+              munix tier: closure-only /nix/store (opt-in). `null` keeps
+              the whole-host store bind. When set, the guest sees only the
+              paths listed in `storePaths`. `mode = "closure"` (the
+              default) bind-mounts them straight from the host store at no
+              disk cost; `mode = "erofs"` needs the prebuilt `image` and
+              pays a full copy of the closure per guest. Build the inputs
+              with `pkgs.closureInfo` (and `mkfs.erofs` for erofs mode) —
+              see the hermes-munix-guest template's
+              `researcher-store-paths` / `researcher-store-erofs` outputs.
             '';
           };
 
@@ -326,6 +361,25 @@
 
       config = lib.mkIf cfg.enable {
         home.packages = profilePackages;
+
+        # erofs is the only mode that materialises anything, so it is the
+        # only one that can be half-configured: `mode = "erofs"` with no
+        # `image` would render `--store-dev null` and die at boot. The
+        # type can't express that cross-field rule (image is optional for
+        # closure mode), so it is asserted here instead.
+        assertions = lib.mapAttrsToList (name: prof: {
+          assertion = prof.storeSlice == null
+            || prof.storeSlice.mode != "erofs"
+            || prof.storeSlice.image != null;
+          message = ''
+            deniac.ai.hermes: profile `${name}` sets storeSlice.mode = "erofs" but no
+            storeSlice.image. erofs mode passes it to munix as `--store-dev`
+            and cannot work without it. Either point it at the prebuilt image
+            ("''${toString guest.packages.''${system}.researcher-store-erofs}") or
+            leave storeSlice.mode at "closure", which needs no image and
+            costs no extra disk.
+          '';
+        }) cfg.profiles;
 
         # Render each profile's declared config + SOUL into its HERMES_HOME,
         # merging over any learned config (declared wins).

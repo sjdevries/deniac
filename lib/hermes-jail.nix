@@ -161,17 +161,42 @@ rec {
       #   bwrap: Can't find source path $XDG_RUNTIME_DIR/wayland-1
       # Verified live 2026-10-30. Audio has the same problem via pipewire.
       headlessFlags = if !prof.gpu then "--no-wayland --no-pipewire" else "";
-      # Opt-in closure-only /nix/store (munix --store-dev, our fork
-      # branch feat/closure-only-store / upstream clan-munix PR #38):
-      # the guest store comes from the erofs image, and --sandbox-store
-      # lists the host paths muvm must read PRE-activation. null = the
-      # whole-host store bind (unchanged default).
+      # Opt-in closure-only /nix/store: the guest sees only the paths its
+      # own closure needs, not the whole host store. null = the whole-host
+      # store bind (unchanged default).
+      #
+      # Two modes, one option (`storeSlice.mode`), both consuming the SAME
+      # pkgs.closureInfo `store-paths` file:
+      #
+      #   closure — `--store-mode closure --store-paths <file>`. Each
+      #     closure path becomes its own virtiofs submount. ZERO extra
+      #     disk: the guest reads the host store's own bytes, so N guests
+      #     cost N×0. This is the default and the mode a fleet should run.
+      #
+      #   erofs — `--store-mode erofs --store-dev <image> --sandbox-store
+      #     <file>`. The closure is materialised as one erofs block device
+      #     mounted by micro-activate. Cheaper at boot (1 mount, not ~1.2k)
+      #     but it costs a full copy of the closure on disk PER GUEST —
+      #     measured 2.65 GiB compressed (lz4) for the researcher slice.
+      #     Kept as the explicit opt-in for boot-latency-sensitive guests.
+      #
+      # Both need a munix that has `--store-mode` (our fork branch
+      # `feat/store-mode`; upstream clan/munix PR #40).
       storeFlags =
-        if prof.storeSlice or null != null then
-          "--store-dev ${lib.escapeShellArg prof.storeSlice.image} "
-          + "--sandbox-store ${lib.escapeShellArg prof.storeSlice.sandboxPaths}"
+        let
+          slice = prof.storeSlice or null;
+          mode = if slice == null then null else slice.mode or "closure";
+        in
+        if slice == null then ""
+        else if mode == "closure" then
+          "--store-mode closure --store-paths ${lib.escapeShellArg slice.storePaths}"
+        else if mode == "erofs" then
+          "--store-mode erofs --store-dev ${lib.escapeShellArg slice.image} "
+          + "--sandbox-store ${lib.escapeShellArg slice.storePaths}"
         else
-          "";
+          throw ''
+            deniac.ai.hermes: storeSlice.mode must be "closure" or "erofs", got "${mode}".
+          '';
       roBinds = lib.concatStringsSep " "
         (map (d: "--ro-bind ${lib.escapeShellArg d} ${lib.escapeShellArg d}") prof.bindReadonly);
       rwBinds = lib.concatStringsSep " "

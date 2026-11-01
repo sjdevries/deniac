@@ -110,11 +110,22 @@
         };
 
       # ── Reusable store-slice builder ─────────────────────────────────
-      # Turns any mkGuest system into the (paths, erofs) pair the
-      # --store-dev launcher consumes. Extracted so researcher / coder /
-      # auditor share ONE recipe (was inline per-guest). The munix RUNNER
-      # is a rootPath because its binaries are read pre-activation too.
-      # Method: research §6 / clan/munix PR #38 (fork pin).
+      # Turns any mkGuest system into the pair a restricted-store launcher
+      # consumes. Extracted so researcher / coder / auditor share ONE
+      # recipe (was inline per-guest). The munix RUNNER is a rootPath
+      # because its binaries are read pre-activation too.
+      # Method: research §6 / clan/munix PR #38 → #40 (fork pin).
+      #
+      # TWO CONSUMERS, ONE CLOSURE LIST:
+      #   * `paths` (closureInfo) — munix `--store-mode closure` binds
+      #     each listed path off the host store. Zero extra disk. This is
+      #     the default the fleet runs, and the only output a closure-mode
+      #     guest needs.
+      #   * `erofs` — munix `--store-mode erofs`, one block device. Costs
+      #     a full copy of the closure PER GUEST (2.65 GiB compressed
+      #     each), so it is the boot-latency opt-in, not the default.
+      #     Leave it unreferenced and Nix never builds it.
+      #
       # The store slice is compressed with lz4: measured 4.66 GiB -> 2.64 GiB
       # (-43.2 %) on the researcher closure, and the mkfs pass costs ~14 s for
       # the whole 5 GiB closure. lz4 decompression is cheap enough that a
