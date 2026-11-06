@@ -86,13 +86,18 @@
         };
 
         image = lib.mkOption {
-          default = "ghcr.io/peonist-ai/halogen-flash-server:0.16.2";
+          default = "ghcr.io/peonist-ai/halogen-flash-server:0.19.0";
           type = lib.types.str;
           description = ''
             The container image to run. The API and engine must come from
             the same tag: an API from before 0.5.0 in front of a newer
             engine sends an image as a placeholder with no pixels behind
             it, and the model describes a picture it never received.
+
+            Rollback: the previous known-good release is
+            `ghcr.io/peonist-ai/halogen-flash-server:0.16.2` — set this
+            option to that value to revert instantly if a newer tag
+            misbehaves.
           '';
         };
 

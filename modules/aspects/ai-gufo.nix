@@ -120,12 +120,13 @@
         };
 
         image = lib.mkOption {
-          default = "ghcr.io/gufo-org/toolboxes/gufo-runtime:latest";
+          default = "ghcr.io/gufo-org/toolboxes/gufo-runtime:0.31";
           type = lib.types.str;
           description = ''
-            The container image to run. `:latest` is the stable floating
-            alias. For reproducibility, pin to an immutable `X.Y.Z` tag
-            or the `sha-<full-gufo-revision>` tag the toolboxes repo
+            The container image to run. Pinned to the current release
+            `0.31` rather than the floating `:latest` alias so the fleet
+            does not drift under it. For byte-exact reproducibility, pin
+            to the `sha-<full-gufo-revision>` tag the toolboxes repo
             publishes alongside each release.
           '';
         };
