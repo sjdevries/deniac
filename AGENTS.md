@@ -88,7 +88,9 @@ scratch space. Working notes are a local-only concern (e.g. a gitignored
 
 ---
 
-## 3. den pin & verification
+## 3. Pins & verification
+
+### 3.1 den pin
 
 - **den is a pinned flake input.** Verify den syntax against **the pinned
   input** — not against the web, not from memory. The den docs move; the pin
@@ -100,6 +102,37 @@ scratch space. Working notes are a local-only concern (e.g. a gitignored
   (known re-verification step).
 - Bumping the den pin is a deliberate, separate commit: new pin +
   re-verification, message says what changed.
+
+### 3.2 Container image tags — pin to proper releases (reproducibility policy)
+
+> **Every container-image default in an aspect is pinned to a specific
+> immutable release tag (or a content digest), never a floating tag** —
+> no `:latest`, `:master`, `:main`, `:nightly`, `:dev`, `:edge`.
+
+- **Why — true reproducibility.** Any given git revision of deniac must
+  resolve to the **same image bytes forever**. A floating tag breaks that:
+  it moves under you, so "build this deniac rev" silently means different
+  things over time, and an upstream regression — or a compromised tag —
+  can flow into the fleet with **no change in our tree** to review.
+- **"Latest" means the most recent *pinned* proper release**, not the
+  floating `:latest` alias. "Bump to latest" = look up the most recent
+  proper release (e.g. `0.31`, `0.19.0`), pin that exact tag, commit.
+  The floating alias is **never** the value stored in the tree.
+- **Prefer a digest** (`image@sha256:…`) where the registry publishes one —
+  strongest reproducibility; a proper version tag is the minimum.
+- **The exception — PR / temporary override.** Testing a PR, or using a PR
+  as a temporary workaround for an upstream issue, is allowed, but it is a
+  **special temporary override that must be a documented, explicit
+  decision**: name the PR, why it's needed, and the eventual proper pin it
+  will be replaced by. It never lands silently as the default (same spirit
+  as §1.3 — name the variant).
+- **Rollback stays one override away.** When bumping an image default, note
+  the previous known-good release in the option `description` so a revert
+  is a one-line override, not a hunt (pattern established in
+  `ai-halogen-flash-server`).
+- **Known violation to fix:** `ai.unsloth` still defaults to
+  `unsloth/unsloth-rocm:latest` — pin it to a proper release tag per this
+  policy.
 
 ---
 
