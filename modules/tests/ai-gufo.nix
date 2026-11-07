@@ -195,7 +195,11 @@
 
     # Batteries-included wiring: with `ai.model-store` included, gufo's
     # modelsDir defaults to the store's derived `llm` subdir, and the
-    # runner mounts exactly that read-only — no per-consumer override.
+    # runner reads its weights from exactly that dir (resolving each
+    # *.gguf symlink there and bind-mounting the file) — no per-consumer
+    # override. The runner no longer bind-mounts the dir itself (the
+    # Nix-built image can't resolve the store's symlinks), so the check
+    # is that the runner's MODELS_DIR points at the store dir.
     test-model-store-wiring = denTest (
       { inputs, den, deniac, igloo, ... }:
       {
@@ -206,16 +210,15 @@
 
         expr = {
           modelsDir = igloo.deniac.ai.gufo.modelsDir;
-          mountArg =
-            let
-              lib' = inputs.nixpkgs.lib;
-              script = builtins.readFile igloo.systemd.user.services.gufo.serviceConfig.ExecStart;
-              line = lib'.findFirst (lib'.hasInfix "-v ") "" (lib'.splitString "\n" script);
-            in builtins.elemAt (builtins.match ".* -v ([^ ]+).*" line) 0;
+          runnerReadsStoreDir =
+            inputs.nixpkgs.lib.hasInfix
+              "MODELS_DIR=\"/var/lib/ai-models/llm\""
+              (builtins.readFile
+                igloo.systemd.user.services.gufo.serviceConfig.ExecStart);
         };
         expected = {
           modelsDir = "/var/lib/ai-models/llm";
-          mountArg = "/var/lib/ai-models/llm:/models:ro";
+          runnerReadsStoreDir = true;
         };
       }
     );
