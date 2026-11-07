@@ -363,7 +363,32 @@
               group = cfg.user;
               extraGroups = [ "render" "video" ];
               linger = true;
+              # Rootless podman needs a WRITABLE HOME — its config
+              # (~/.config/containers) and the container/image store
+              # (~/.local/share/containers) live under it. The system-user
+              # default /var/empty is read-only, so `podman run` dies at
+              # startup with `stat /var/empty/.config: no such file or
+              # directory`.
+              home = "/var/lib/${cfg.user}";
+              # Rootless podman's --userns=keep-id needs subordinate id
+              # ranges. NixOS auto-assigns them only for uid>=1000, so a
+              # system user gets NONE → newuidmap fails. Size 131072, NOT
+              # the usual 65536: keep-id:uid=1000 maps the container's
+              # full uid space around the kept uid, which needs TWO 65536
+              # blocks. A 65536 range makes newuidmap emit two mappings
+              # over the SAME host range → "write to uid_map failed:
+              # Invalid argument". Hosts whose own subuid allocation
+              # collides with 231072 override users.users.<user>.subuidRanges.
+              subuidRanges = [ { start = 231072; count = 131072; } ];
+              subgidRanges = [ { start = 231072; count = 131072; } ];
             };
+
+            # NixOS records `home` in /etc/passwd but does NOT create the
+            # directory for a system user — tmpfiles does, owned by the
+            # service user, so podman can write its store there.
+            systemd.tmpfiles.rules = [
+              "d /var/lib/${cfg.user} 0750 ${cfg.user} ${cfg.user} -"
+            ];
 
             # Rootless podman under a systemd USER service. The user's
             # manager runs it; `--userns=keep-id` maps the container's
