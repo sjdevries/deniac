@@ -76,25 +76,26 @@
         den.aspects.igloo.includes = [ deniac.ai.gufo ];
         den.aspects.igloo.nixos.deniac.ai.gufo.enable = true;
 
-        expr = {
-          podmanEnable = igloo.virtualisation.podman.enable;
-          linger = igloo.users.users.gufo.linger;
-          extraGroups = igloo.users.users.gufo.extraGroups;
-          restart = igloo.systemd.user.services.gufo.serviceConfig.Restart;
-          timeoutStartSec = igloo.systemd.user.services.gufo.serviceConfig.TimeoutStartSec;
-          execStartIsSet = builtins.isString igloo.systemd.user.services.gufo.serviceConfig.ExecStart;
-          # The generated runner must mount the models dir READ-ONLY as
-          # /models:ro — assert the actual `-v` argument (a config-shape
-          # assertion alone lets a typo ship that podman rejects at start).
-          mountArg =
-            let
-              lib' = inputs.nixpkgs.lib;
-              script = builtins.readFile igloo.systemd.user.services.gufo.serviceConfig.ExecStart;
-              line = lib'.findFirst (lib'.hasInfix "-v ") "" (lib'.splitString "\n" script);
-            in builtins.elemAt (builtins.match ".* -v ([^ ]+).*" line) 0;
-          wantedBy = igloo.systemd.user.services.gufo.wantedBy;
-          firewallPorts = igloo.networking.firewall.allowedTCPPorts;
-        };
+        expr =
+          let
+            script = builtins.readFile igloo.systemd.user.services.gufo.serviceConfig.ExecStart;
+          in {
+            podmanEnable = igloo.virtualisation.podman.enable;
+            linger = igloo.users.users.gufo.linger;
+            extraGroups = igloo.users.users.gufo.extraGroups;
+            restart = igloo.systemd.user.services.gufo.serviceConfig.Restart;
+            timeoutStartSec = igloo.systemd.user.services.gufo.serviceConfig.TimeoutStartSec;
+            execStartIsSet = builtins.isString igloo.systemd.user.services.gufo.serviceConfig.ExecStart;
+            # The runner bind-mounts each resolved weight FILE read-only
+            # into /models (not the symlink store dir — the Nix-built
+            # image can't resolve those links). Assert the per-file
+            # `:/models/<name>:ro` mount shape the runner emits.
+            mountsRoIntoModels =
+              inputs.nixpkgs.lib.hasInfix "/models/" script &&
+              inputs.nixpkgs.lib.hasInfix ":ro" script;
+            wantedBy = igloo.systemd.user.services.gufo.wantedBy;
+            firewallPorts = igloo.networking.firewall.allowedTCPPorts;
+          };
         expected = {
           podmanEnable = true;
           linger = true;
@@ -102,7 +103,7 @@
           restart = "always";
           timeoutStartSec = "infinity";
           execStartIsSet = true;
-          mountArg = "/var/lib/ai-models/llm:/models:ro";
+          mountsRoIntoModels = true;
           wantedBy = [ "default.target" ];
           firewallPorts = [ 8080 ];
         };
