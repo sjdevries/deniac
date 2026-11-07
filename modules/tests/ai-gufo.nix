@@ -279,5 +279,41 @@
         };
       }
     );
+
+    # The runner must NOT bind-mount the symlink store dir directly: the
+    # gufo-runtime image is itself Nix-built (has its own /nix/store), so
+    # the store's symlinks dangle inside it, and mounting the host
+    # /nix/store would shadow the image's binaries. Instead the runner
+    # resolves each *.gguf symlink to its real /nix/store path and
+    # bind-mounts the FILE into /models. Read the generated script via the
+    # service's ExecStart store path (nix-unit realizes the trivial
+    # writeShellScriptBin on readFile).
+    test-runner-binds-resolved-weights = denTest (
+      { inputs, den, deniac, igloo, ... }:
+      {
+        imports = [ (inputs.den.namespace "deniac" [ inputs.self ]) ];
+        den.hosts.x86_64-linux.igloo = { };
+        den.aspects.igloo.includes = [ deniac.ai.gufo ];
+        den.aspects.igloo.nixos.deniac.ai.gufo.enable = true;
+
+        expr =
+          let
+            script = builtins.readFile
+              igloo.systemd.user.services.gufo.serviceConfig.ExecStart;
+          in
+          {
+            resolvesSymlinks = inputs.nixpkgs.lib.hasInfix "readlink -f" script;
+            mountsIntoModels = inputs.nixpkgs.lib.hasInfix "/models/" script;
+            # The old bare dir-mount (`<store>/llm:/models:ro`) must be gone.
+            noBareDirMount =
+              !(inputs.nixpkgs.lib.hasInfix "/llm:/models:ro" script);
+          };
+        expected = {
+          resolvesSymlinks = true;
+          mountsIntoModels = true;
+          noBareDirMount = true;
+        };
+      }
+    );
   };
 }

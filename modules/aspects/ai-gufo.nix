@@ -77,13 +77,39 @@
       cacheDiskArg =
         if cfg.cacheDisk then "--cache-disk /home/gufo/.cache/gufo" else "";
 
-      # The container's run line, as a script: ExecStart must be a single
-      # command, and the flags are assembled from the aspect options.
-      # Rootless: --userns=keep-id maps the container's 1000:1000 to the
-      # service user; --group-add keep-groups carries render/video in for
-      # /dev/kfd and /dev/dri.
-      runner = pkgs.writeShellScriptBin "gufo-run" ''
+      # The container's run line, as a script. The model mount is NOT a
+      # plain `-v <modelsDir>:/models:ro`: the shared model-store exposes
+      # weights as symlinks into /nix/store, and the gufo-runtime image is
+      # ITSELF Nix-built (it ships its own /nix/store). Mounting the
+      # symlink dir leaves the links dangling inside the container (they
+      # resolve against the image's /nix/store, not the host's → "No such
+      # file or directory"), and mounting the host /nix/store read-only
+      # would SHADOW the image's own binaries and break `gufo`. So the
+      # runner resolves each weight symlink to its real /nix/store path
+      # and bind-mounts the FILE itself into /models: bind-mounts cross
+      # filesystems, the container sees real bytes, no symlink resolution
+      # happens inside, and the image's /nix/store stays intact. Globbing
+      # every *.gguf in the store dir means multi-part GGUFs
+      # (NNNNN-of-MMMMM) are all present for the loader's part
+      # auto-discovery.
+      runner = pkgs.writeShellScriptBin "gufo-run" {
+        paths = [ pkgs.coreutils ];
+      } ''
         set -euo pipefail
+        MODELS_DIR=${lib.escapeShellArg cfg.modelsDir}
+
+        MOUNT_ARGS=()
+        shopt -s nullglob
+        for f in "$MODELS_DIR"/*.gguf; do
+          resolved=$(readlink -f "$f")
+          [ -e "$resolved" ] || continue
+          MOUNT_ARGS+=(-v "$resolved:/models/''${f##*/}:ro")
+        done
+        if [ ''${#MOUNT_ARGS[@]} -eq 0 ]; then
+          echo "gufo-run: no .gguf weights found in $MODELS_DIR" >&2
+          exit 1
+        fi
+
         exec ${podman}/bin/podman run --rm \
           --name gufo \
           --userns=keep-id:uid=1000,gid=1000 \
@@ -93,7 +119,7 @@
           --ulimit memlock=-1:-1 \
           ${lib.optionalString (cfg.memoryLow != null) "--cgroup-parent=gufo.slice "} \
           -p ${toString cfg.port}:${toString cfg.apiPort} \
-          -v ${lib.escapeShellArg (cfg.modelsDir + ":/models:ro")} \
+          "''${MOUNT_ARGS[@]}" \
           ${lib.escapeShellArg cfg.image} \
           gufo serve --host 0.0.0.0 --port ${toString cfg.apiPort} llm \
             --model ${lib.escapeShellArg cfg.model} \
