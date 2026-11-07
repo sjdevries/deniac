@@ -208,7 +208,12 @@ in
               # model is in the system closure (kept alive, deduped,
               # cached). rebuild = download; a peer substituter can serve
               # the bytes instead of the origin.
-              ++ map (m: "L+ ${cfg.root}/${m.subdir}/${m.name} - - - ${fetchModel m}")
+              # tmpfiles L+ needs SEVEN fields: Type Path Mode User Group Age
+              # Argument. The Age `-` is required even though unused for a
+              # symlink — omitting it shifts the target into the Age slot,
+              # systemd-tmpfiles rejects the line ("Invalid age '<target>'",
+              # exit 65) and NO symlink is created.
+              ++ map (m: "L+ ${cfg.root}/${m.subdir}/${m.name} - - - - ${fetchModel m}")
                 cfg.models;
           })
         ];

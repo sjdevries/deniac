@@ -167,7 +167,7 @@
             (r: inputs.nixpkgs.lib.hasPrefix "L+ /var/lib/ai-models/llm/foo.gguf" r)
             igloo.systemd.tmpfiles.rules;
           linkToStore = inputs.nixpkgs.lib.any
-            (r: inputs.nixpkgs.lib.hasPrefix "L+ /var/lib/ai-models/llm/foo.gguf - - - /nix/store/" r)
+            (r: inputs.nixpkgs.lib.hasPrefix "L+ /var/lib/ai-models/llm/foo.gguf - - - - /nix/store/" r)
             igloo.systemd.tmpfiles.rules;
         };
         expected = {
@@ -196,10 +196,10 @@
 
         expr = {
           llmLink = inputs.nixpkgs.lib.any
-            (r: inputs.nixpkgs.lib.hasPrefix "L+ /var/lib/ai-models/llm/a.gguf - - - /nix/store/" r)
+            (r: inputs.nixpkgs.lib.hasPrefix "L+ /var/lib/ai-models/llm/a.gguf - - - - /nix/store/" r)
             igloo.systemd.tmpfiles.rules;
           lorasLink = inputs.nixpkgs.lib.any
-            (r: inputs.nixpkgs.lib.hasPrefix "L+ /var/lib/ai-models/loras/b.safetensors - - - /nix/store/" r)
+            (r: inputs.nixpkgs.lib.hasPrefix "L+ /var/lib/ai-models/loras/b.safetensors - - - - /nix/store/" r)
             igloo.systemd.tmpfiles.rules;
           linkCount = builtins.length
             (builtins.filter (r: inputs.nixpkgs.lib.hasPrefix "L+ /var/lib/ai-models/" r)
