@@ -212,7 +212,7 @@
           modelsDir = igloo.deniac.ai.gufo.modelsDir;
           runnerReadsStoreDir =
             inputs.nixpkgs.lib.hasInfix
-              "MODELS_DIR='/var/lib/ai-models/llm'"
+              "MODELS_DIR=/var/lib/ai-models/llm"
               (builtins.readFile
                 igloo.systemd.user.services.gufo.serviceConfig.ExecStart);
         };
