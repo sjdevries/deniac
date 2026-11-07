@@ -48,7 +48,7 @@ compiled engine (or an upstream AMD image) — that's the missing piece.
 | --- | --- | --- |
 | `enable` | `false` | Start the service. Inert by default. |
 | `strataDir` | `/opt/strata` | Where you ran `./setup.sh` (holds `run-<model>.sh`). Installed out-of-band. |
-| `model` | `IQ2_XS` | Model size → selects `run-<model>.sh` (`Q2_0`/`IQ2_XS`/`IQ3_XXS`/`IQ3_S`/`coder`). Must match a setup. |
+| `model` | `IQ2_XS` | Model size → selects `run-<model>.sh` (`Q2_0`/`IQ2_XS`/`IQ3_XXS`/`IQ3_S`/`coder`). These are the **ISTA-DASLab GSQ-RCO** quants — standard GGUF, so the *same bytes* a GGUF engine like gufo can load. `IQ3_S` (3.5 bpw) is the recommended quality point; `Q2_0` (2.4 bpw) the fastest. Must match a setup. |
 | `ggufDir` | `ai.model-store.paths.gguf` → fallback `/var/lib/ai-models/gguf` | GGUF dir passed via `--gguf-dir`. Defaults to the shared store. |
 | `port` | `8080` | OpenAI-compatible API port. |
 | `host` | `127.0.0.1` | Bind address (loopback by default). |
@@ -63,9 +63,16 @@ down `run-<model>.sh`), pointing at the shared store's GGUF:
 ```sh
 git clone https://github.com/Niko1221/Strata /opt/strata
 cd /opt/strata
-git checkout v0.1.42   # latest; gfx1151 (Strix Halo) support started in 0.1.40
+git checkout v0.2.11   # latest (2026-11-05); gfx1151 support started in 0.1.40
 ./setup.sh --model IQ2_XS --gguf-dir /var/lib/ai-models/gguf --yes
 ```
+
+> **Packaged alternative (and why this aspect still needs `setup.sh`).**
+> The current release also ships a prebuilt `linux-x86_64-hip-halo`
+> engine (AppImage / `strata launch`) that auto-selects on gfx1151 /
+> PCI `1002:1586` with **no compile step** — ideal for a quick try. But
+> it does **not** lay down `run-<model>.sh`, so **this aspect's service
+> needs the `setup.sh` install above**, not the AppImage.
 
 (On a Strix Halo box, let setup recommend `UD-IQ4_XS` instead of
 `IQ2_XS` — that's the pack measured for ≥80 GB unified memory.)
@@ -90,6 +97,14 @@ missing, it fails fast with the exact `setup.sh` command to run.
 live in the shared tree (downloaded once, backed up once) rather than a
 private `Strata-data` folder. Strata builds its expert packs / MTP draft
 layer from these at setup time. A custom store `root` propagates.
+
+**Disk (the big lever).** The store is content-addressed, so a quant
+shared across engines — the same `IQ3_S` serving strata *and* a GGUF
+engine like gufo — is **one copy in `/nix/store`**, not one per engine.
+On a model-heavy host that is the single largest saving: two engines on
+the *same* 83.6 GB `IQ3_S` cost 83.6 GB total, versus ~174 GB if each
+kept its own quant. (Even cross-quant, the 28.8 GB n-gram shard is
+byte-identical across the ISTA-DASLab set and dedupes.)
 
 ## The real target: a discrete-GPU box
 
@@ -120,7 +135,15 @@ hipBLASLt tables #1388, `STRATA_PREFILL_STREAM_MIN=128` #1391 — still
 hold), and the tag's
 [`docs/STRIX_HALO.md`](https://github.com/Niko1221/Strata/blob/v0.1.42/docs/STRIX_HALO.md)
 and `setup.py` (`STRIX_HALO_ARCH` / `STRIX_HALO_PCI_IDS` /
-`strix_halo_recommends`). The systemd service, service user, firewall
+`strix_halo_recommends`). **Re-verified 2026-11-06 against the live
+GitHub API + the [ISTA-DASLab GSQ-RCO
+release](https://huggingface.co/ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF):**
+latest release is **v0.2.11** (2026-11-05) shipping the packaged
+`linux-x86_64-hip-halo` engine; the `Q2_0`/`IQ2_XS`/`IQ3_XXS`/`IQ3_S`
+quants are ISTA-DASLab's (standard GGUF, shared-loadable with other
+engines); PR #895 confirmed `merged: false` — the gfx1151 path was the
+merged **Aurora port** (per #612 comment #6), not #895; #612 itself was
+closed by a stale-bot. The systemd service, service user, firewall
 gating, and model-store wiring are deniac's.
 
 ## Tests
