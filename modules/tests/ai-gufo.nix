@@ -235,5 +235,42 @@
         expected = "/srv/models/llm";
       }
     );
+
+    # Rootless-podman provisioning: the service user gets a WRITABLE home
+    # (NOT the read-only /var/empty system-user default) plus subordinate
+    # id ranges sized for --userns=keep-id:uid=1000 (131072 = two 65536
+    # blocks), and a tmpfiles rule creates the home dir. Without these the
+    # container fails at start with `stat /var/empty/.config: no such file
+    # or directory` and `newuidmap: write to uid_map failed: Invalid
+    # argument`. Flat-leaf selections (nix-unit deep-forces the value).
+    test-rootless-podman-provisioning = denTest (
+      { inputs, den, deniac, igloo, ... }:
+      {
+        imports = [ (inputs.den.namespace "deniac" [ inputs.self ]) ];
+        den.hosts.x86_64-linux.igloo = { };
+        den.aspects.igloo.includes = [ deniac.ai.gufo ];
+        den.aspects.igloo.nixos.deniac.ai.gufo.enable = true;
+
+        expr = {
+          home = igloo.users.users.gufo.home;
+          subuidStart = (builtins.head igloo.users.users.gufo.subuidRanges).start;
+          subuidCount = (builtins.head igloo.users.users.gufo.subuidRanges).count;
+          subgidStart = (builtins.head igloo.users.users.gufo.subgidRanges).start;
+          subgidCount = (builtins.head igloo.users.users.gufo.subgidRanges).count;
+          tmpfilesHasHome =
+            inputs.nixpkgs.lib.any
+              (r: inputs.nixpkgs.lib.hasPrefix "d /var/lib/gufo " r)
+              igloo.systemd.tmpfiles.rules;
+        };
+        expected = {
+          home = "/var/lib/gufo";
+          subuidStart = 231072;
+          subuidCount = 131072;
+          subgidStart = 231072;
+          subgidCount = 131072;
+          tmpfilesHasHome = true;
+        };
+      }
+    );
   };
 }
