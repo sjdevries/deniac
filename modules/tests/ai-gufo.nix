@@ -253,10 +253,10 @@
 
         expr = {
           home = igloo.users.users.gufo.home;
-          subuidStart = (builtins.head igloo.users.users.gufo.subuidRanges).start;
-          subuidCount = (builtins.head igloo.users.users.gufo.subuidRanges).count;
-          subgidStart = (builtins.head igloo.users.users.gufo.subgidRanges).start;
-          subgidCount = (builtins.head igloo.users.users.gufo.subgidRanges).count;
+          subuidStart = (builtins.head igloo.users.users.gufo.subUidRanges).start;
+          subuidCount = (builtins.head igloo.users.users.gufo.subUidRanges).count;
+          subgidStart = (builtins.head igloo.users.users.gufo.subGidRanges).start;
+          subgidCount = (builtins.head igloo.users.users.gufo.subGidRanges).count;
           tmpfilesHasHome =
             inputs.nixpkgs.lib.any
               (r: inputs.nixpkgs.lib.hasPrefix "d /var/lib/gufo " r)

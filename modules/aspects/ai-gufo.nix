@@ -378,9 +378,9 @@
               # blocks. A 65536 range makes newuidmap emit two mappings
               # over the SAME host range → "write to uid_map failed:
               # Invalid argument". Hosts whose own subuid allocation
-              # collides with 231072 override users.users.<user>.subuidRanges.
-              subuidRanges = [ { start = 231072; count = 131072; } ];
-              subgidRanges = [ { start = 231072; count = 131072; } ];
+              # collides with 231072 override users.users.<user>.subUidRanges.
+              subUidRanges = [ { start = 231072; count = 131072; } ];
+              subGidRanges = [ { start = 231072; count = 131072; } ];
             };
 
             # NixOS records `home` in /etc/passwd but does NOT create the
