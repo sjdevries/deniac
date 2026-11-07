@@ -253,9 +253,9 @@
 
         expr = {
           home = igloo.users.users.gufo.home;
-          subuidStart = (builtins.head igloo.users.users.gufo.subUidRanges).start;
+          subuidStart = (builtins.head igloo.users.users.gufo.subUidRanges).startUid;
           subuidCount = (builtins.head igloo.users.users.gufo.subUidRanges).count;
-          subgidStart = (builtins.head igloo.users.users.gufo.subGidRanges).start;
+          subgidStart = (builtins.head igloo.users.users.gufo.subGidRanges).startGid;
           subgidCount = (builtins.head igloo.users.users.gufo.subGidRanges).count;
           tmpfilesHasHome =
             inputs.nixpkgs.lib.any
