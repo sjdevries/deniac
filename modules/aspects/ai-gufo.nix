@@ -92,16 +92,14 @@
       # every *.gguf in the store dir means multi-part GGUFs
       # (NNNNN-of-MMMMM) are all present for the loader's part
       # auto-discovery.
-      runner = pkgs.writeShellScriptBin "gufo-run" {
-        paths = [ pkgs.coreutils ];
-      } ''
+      runner = pkgs.writeShellScriptBin "gufo-run" ''
         set -euo pipefail
         MODELS_DIR=${lib.escapeShellArg cfg.modelsDir}
 
         MOUNT_ARGS=()
         shopt -s nullglob
         for f in "$MODELS_DIR"/*.gguf; do
-          resolved=$(readlink -f "$f")
+          resolved=$(${pkgs.coreutils}/bin/readlink -f "$f")
           [ -e "$resolved" ] || continue
           MOUNT_ARGS+=(-v "$resolved:/models/''${f##*/}:ro")
         done
