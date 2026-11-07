@@ -372,13 +372,20 @@
               home = "/var/lib/${cfg.user}";
               # Rootless podman's --userns=keep-id needs subordinate id
               # ranges. NixOS auto-assigns them only for uid>=1000, so a
-              # system user gets NONE → newuidmap fails. Size 131072, NOT
-              # the usual 65536: keep-id:uid=1000 maps the container's
-              # full uid space around the kept uid, which needs TWO 65536
-              # blocks. A 65536 range makes newuidmap emit two mappings
-              # over the SAME host range → "write to uid_map failed:
-              # Invalid argument". Hosts whose own subuid allocation
-              # collides with 231072 override users.users.<user>.subUidRanges.
+              # system user gets NONE → newuidmap fails. The hard rule is
+              # EXACTLY ONE non-overlapping range per user: podman maps
+              # every subordinate range it finds onto the container's uid
+              # space in order, so a DUPLICATE `gufo:` line in
+              # /etc/subuid (the usual cause is repeated `echo >>` /
+              # `sed` hand-edits) makes newuidmap emit two mappings onto
+              # the SAME host block → "write to uid_map failed: Invalid
+              # argument". The aspect declares a single-element list, so
+              # `switch` regenerates a clean file; a stale duplicate only
+              # survives in a hand-edited /etc/subuid. 131072 is
+              # generous headroom over the 65536 minimum (covers
+              # keep-id:uid=1000's full uid space with room to spare).
+              # Hosts whose own subuid allocation collides with 231072
+              # override users.users.<user>.subUidRanges.
               subUidRanges = [ { startUid = 231072; count = 131072; } ];
               subGidRanges = [ { startGid = 231072; count = 131072; } ];
             };
