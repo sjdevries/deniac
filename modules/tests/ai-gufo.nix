@@ -93,6 +93,14 @@
             mountsRoIntoModels =
               inputs.nixpkgs.lib.hasInfix "/models/" script &&
               inputs.nixpkgs.lib.hasInfix ":ro" script;
+            # The unit must pin HOME: a linger user-manager started
+            # before the home move keeps HOME=/var/empty in every unit
+            # it spawns, which breaks rootless podman (even `rm --ignore`
+            # exits 1 → ExecStartPre fails the service).
+            environmentPinsHome =
+              inputs.nixpkgs.lib.elem
+                "HOME=/var/lib/gufo"
+                igloo.systemd.user.services.gufo.serviceConfig.Environment;
             wantedBy = igloo.systemd.user.services.gufo.wantedBy;
             firewallPorts = igloo.networking.firewall.allowedTCPPorts;
           };
@@ -104,6 +112,7 @@
           timeoutStartSec = "infinity";
           execStartIsSet = true;
           mountsRoIntoModels = true;
+          environmentPinsHome = true;
           wantedBy = [ "default.target" ];
           firewallPorts = [ 8080 ];
         };

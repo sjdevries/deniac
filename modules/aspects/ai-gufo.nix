@@ -431,6 +431,16 @@
               after = [ "network-online.target" ];
               wants = [ "network-online.target" ];
               serviceConfig = {
+                # Pin HOME explicitly. The user manager captures HOME from
+                # passwd at manager startup; a linger session created
+                # BEFORE this aspect moved the home (system users default
+                # to read-only /var/empty) keeps the stale value in every
+                # unit it spawns forever — rootless podman then looks for
+                # its store under /var/empty and even `podman rm
+                # --ignore` fails with exit 1, so ExecStartPre kills the
+                # start. Environment= overrides the manager env, so the
+                # unit is correct without waiting for a reboot.
+                Environment = [ "HOME=/var/lib/${cfg.user}" ];
                 Restart = "always";
                 RestartSec = "10s";
                 # First load maps a large model; do not time it out.
