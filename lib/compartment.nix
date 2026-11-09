@@ -156,48 +156,93 @@ rec {
     else
       null;
 
-  # Throws on the first offending bind. Returns true when everything is
-  # clean, so callers can use it as an `assert`.
+  # Normalised for comparison: trailing slash stripped. Both the checked
+  # path and an acknowledged path go through this, so `/home/tux` and
+  # `/home/tux/` are the same bind.
+  normaliseBindPath = path: lib.removeSuffix "/" path;
+
+  # Fail loudly, with an escape hatch.
+  #
+  # A path on the unsafe list is rejected UNLESS it is named in
+  # `allowUnsafeBinds`. That is the whole mechanism: the default denies,
+  # and the exception has to be spelled out — per path, by name, in the
+  # config that uses it.
+  #
+  # Why the ack lives in the consumer's config rather than in this file:
+  # an exception hidden in a shared library is invisible to whoever reviews
+  # the host, and leaves a downstream consumer with no option but to fork.
+  # Named here, the dangerous line and its sanction sit in the same diff,
+  # and `grep -r allowUnsafeBinds` lists every sanctioned exception across
+  # the fleet.
+  #
+  # Why not `mkForce`: it overrides PRIORITY, not semantics. Every
+  # ordinary module conflict would look identical to a security
+  # acknowledgment, so the signal dissolves. It also replaces the whole
+  # list, so it cannot express "this specific path is sanctioned."
   assertSafeBinds =
     { bindReadonly ? [ ]
     , bindReadwrite ? [ ]
+    , allowUnsafeBinds ? [ ]
     , context ? "compartment"
     }:
     let
+      acked = map normaliseBindPath allowUnsafeBinds;
       offender = kind: p:
-        let why = whyBindUnsafe p; in
-        if why == null then null else ''
-          ${context}: refusing to bind the ${kind} path "${p}" — ${why}.
-
-          A compartment's bind list is an ALLOWLIST: everything in it is
-          visible to whatever runs inside, including a compromised
-          compartment. Binding a home root, `/`, or a credential directory
-          is not a wide permission — it is the end of the isolation.
-
-          Bind the specific subdirectory the app actually needs instead:
-              bindReadwrite = [ "/home/<user>/<project>" ];
-
-          If one of the rejected paths is genuinely required, add it to
-          `unsafeBindBases` in lib/compartment.nix deliberately, in its own
-          commit. That is the point of this check: the dangerous line has to
-          become a deliberate edit to a shared library file rather than a
-          convenience in a host config.
-        '';
+        let
+          why = whyBindUnsafe p;
+          n = normaliseBindPath p;
+        in
+        if why == null then null
+        else if lib.elem n acked then null
+        else { inherit kind p why; };
       bad = builtins.filter (x: x != null)
         (map (offender "read-only") bindReadonly
           ++ map (offender "read-write") bindReadwrite);
+      msg = o: ''
+        ${context}: refusing to bind the ${o.kind} path "${o.p}" — ${o.why}.
+
+        A compartment's bind list is an ALLOWLIST: everything in it is
+        visible to whatever runs inside, including a compromised
+        compartment. Binding a home root, `/`, or a credential directory
+        is not a wide permission — it is the end of the isolation.
+
+        Bind the specific subdirectory the app actually needs instead:
+            bindReadwrite = [ "/home/<user>/<project>" ];
+
+        If this path is genuinely required, acknowledge it by name:
+
+            bindReadwrite    = [ "${o.p}" ];
+            allowUnsafeBinds = [ "${o.p}" ];
+
+        The ack must name the exact path and sits beside the bind, so a
+        reviewer sees the permission and its sanction together. Put the
+        reason in the commit message.
+      '';
+      # Sanctioned unsafe binds stay LOUD at build time. An exception
+      # opened for one legitimate reason should still be visible in the
+      # build log when someone later asks why a compartment can see the
+      # home directory.
+      sanctioned = builtins.filter (p: whyBindUnsafe p != null) acked;
     in
-    if bad == [ ] then true
-    else throw (builtins.head bad);
+    if bad != [ ] then throw (msg (builtins.head bad))
+    else if sanctioned == [ ] then true
+    else builtins.trace ''
+      ${context}: binding unsafe path(s) ${toString sanctioned} — acknowledged via allowUnsafeBinds.
+      ${context}: deliberate exception; keep the reason in the commit message.''
+      true;
 
   # ── bind allowlists → munix virtiofs flags ──────────────────────────
+  # `allowUnsafeBinds` names paths that would otherwise be rejected; see
+  # assertSafeBinds above. It is passed through, never defaulted to
+  # anything — an unacknowledged unsafe bind always fails.
   munixBindFlags =
     { bindReadonly ? [ ]
     , bindReadwrite ? [ ]
+    , allowUnsafeBinds ? [ ]
     , context ? "munix compartment"
     }:
     assert (assertSafeBinds {
-      inherit bindReadonly bindReadwrite context;
+      inherit bindReadonly bindReadwrite allowUnsafeBinds context;
     });
     let
       ro = lib.concatStringsSep " "
@@ -248,13 +293,14 @@ rec {
     , env ? { }
     , bindReadonly ? [ ]
     , bindReadwrite ? [ ]
+    , allowUnsafeBinds ? [ ]
     , label ? "compartment-${name}"
     , stateVar ? "STATE"
     }:
     let
       # Forced via the bind rendering below so an unsafe list cannot render.
       bindSafety = assertSafeBinds {
-        inherit bindReadonly bindReadwrite;
+        inherit bindReadonly bindReadwrite allowUnsafeBinds;
         context = "bwrap compartment ${name}";
       };
       roBinds = assert bindSafety;
@@ -332,6 +378,7 @@ rec {
     , command
     , bindReadonly ? [ ]
     , bindReadwrite ? [ ]
+    , allowUnsafeBinds ? [ ]
     , network ? "full"
     , gpu ? false
     , storeSlice ? null
@@ -360,7 +407,10 @@ rec {
         ${virtFlags { inherit network gpu; }} \
         ${storeSliceFlags what storeSlice} \
         --bind "${sRef}" "${sRef}" \
-        ${munixBindFlags { inherit bindReadonly bindReadwrite; }} \
+        ${munixBindFlags {
+          inherit bindReadonly bindReadwrite allowUnsafeBinds;
+          context = "munix compartment ${name}";
+        }} \
         "$CLOSURE" -- \
         env ${guestEnv}${stateEnvAssign}HOME="${sRef}/${homeSubdir}" ${command} "$@"
     '';

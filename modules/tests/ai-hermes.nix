@@ -270,6 +270,39 @@ in
           bindReadwrite = [ "/home/tux/research-out" ];
           context = "test";
         });
+        # ── the escape hatch ───────────────────────────────────
+        # Naming the exact path sanctions it.
+        guardAckPasses = builtins.tryEval (cp.assertSafeBinds {
+          bindReadonly = [ ];
+          bindReadwrite = [ "/home/tux" ];
+          allowUnsafeBinds = [ "/home/tux" ];
+          context = "test";
+        });
+        # The ack must name THIS path. Acking something else must not
+        # unlock anything — otherwise one ack becomes a global bypass.
+        guardAckMustMatchExact = builtins.tryEval (cp.assertSafeBinds {
+          bindReadonly = [ ];
+          bindReadwrite = [ "/home/tux" ];
+          allowUnsafeBinds = [ "/home/tux/elsewhere" ];
+          context = "test";
+        });
+        # Trailing slash is the same bind on both sides.
+        guardAckSlashMatches = builtins.tryEval (cp.assertSafeBinds {
+          bindReadonly = [ "/home/tux/" ];
+          bindReadwrite = [ ];
+          allowUnsafeBinds = [ "/home/tux" ];
+          context = "test";
+        });
+        # End-to-end: a compartment builds once the bind is acknowledged.
+        bwrapAckBuilds = builtins.tryEval (
+          (cp.mkBwrapCompartment pkgs {
+            name = "acknowledged";
+            stateDirExpr = ''"$HOME/.compartments/ack"'';
+            command = "true";
+            bindReadwrite = [ "/home/tux" ];
+            allowUnsafeBinds = [ "/home/tux" ];
+          }).drvPath
+        );
       in
       {
         expr = {
@@ -284,6 +317,11 @@ in
           munixCredBindThrows = !credBind.success;
           guardThrowsOnHome = !guardDirect.success;
           guardAllowsOrdinary = guardClean.success && guardClean.value == true;
+          # escape hatch: works when named, inert when not
+          ackSanctionsExactPath = guardAckPasses.success && guardAckPasses.value == true;
+          ackDoesNotUnlockOthers = !guardAckMustMatchExact.success;
+          ackNormalisesTrailingSlash = guardAckSlashMatches.success;
+          compartmentBuildsWithAck = bwrapAckBuilds.success;
         };
         expected = {
           blockedCount = 13;
@@ -293,6 +331,10 @@ in
           munixCredBindThrows = true;
           guardThrowsOnHome = true;
           guardAllowsOrdinary = true;
+          ackSanctionsExactPath = true;
+          ackDoesNotUnlockOthers = true;
+          ackNormalisesTrailingSlash = true;
+          compartmentBuildsWithAck = true;
         };
       }
     );
