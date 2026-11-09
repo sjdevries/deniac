@@ -271,11 +271,13 @@ in
           context = "test";
         });
         # ── the escape hatch ───────────────────────────────────
-        # Naming the exact path sanctions it.
+        # Naming the exact path AND giving a reason sanctions it.
         guardAckPasses = builtins.tryEval (cp.assertSafeBinds {
           bindReadonly = [ ];
           bindReadwrite = [ "/home/tux" ];
-          allowUnsafeBinds = [ "/home/tux" ];
+          allowUnsafeBinds = [
+            { path = "/home/tux"; reason = "test: sanctioned home bind"; }
+          ];
           context = "test";
         });
         # The ack must name THIS path. Acking something else must not
@@ -283,14 +285,34 @@ in
         guardAckMustMatchExact = builtins.tryEval (cp.assertSafeBinds {
           bindReadonly = [ ];
           bindReadwrite = [ "/home/tux" ];
-          allowUnsafeBinds = [ "/home/tux/elsewhere" ];
+          allowUnsafeBinds = [
+            { path = "/home/tux/elsewhere"; reason = "test: wrong path"; }
+          ];
           context = "test";
         });
         # Trailing slash is the same bind on both sides.
         guardAckSlashMatches = builtins.tryEval (cp.assertSafeBinds {
           bindReadonly = [ "/home/tux/" ];
           bindReadwrite = [ ];
-          allowUnsafeBinds = [ "/home/tux" ];
+          allowUnsafeBinds = [
+            { path = "/home/tux"; reason = "test: slash normalisation"; }
+          ];
+          context = "test";
+        });
+        # The reason is REQUIRED, not decorative. An ack with no reason
+        # fails, so the field cannot be silently skipped — which is the
+        # whole point of making it mandatory rather than optional.
+        guardMissingReasonThrows = builtins.tryEval (cp.assertSafeBinds {
+          bindReadonly = [ ];
+          bindReadwrite = [ "/home/tux" ];
+          allowUnsafeBinds = [ { path = "/home/tux"; } ];
+          context = "test";
+        });
+        # Whitespace-only is not a reason either.
+        guardBlankReasonThrows = builtins.tryEval (cp.assertSafeBinds {
+          bindReadonly = [ ];
+          bindReadwrite = [ "/home/tux" ];
+          allowUnsafeBinds = [ { path = "/home/tux"; reason = "   "; } ];
           context = "test";
         });
         # End-to-end: a compartment builds once the bind is acknowledged.
@@ -300,7 +322,9 @@ in
             stateDirExpr = ''"$HOME/.compartments/ack"'';
             command = "true";
             bindReadwrite = [ "/home/tux" ];
-            allowUnsafeBinds = [ "/home/tux" ];
+            allowUnsafeBinds = [
+              { path = "/home/tux"; reason = "test: end-to-end ack"; }
+            ];
           }).drvPath
         );
       in
@@ -322,6 +346,9 @@ in
           ackDoesNotUnlockOthers = !guardAckMustMatchExact.success;
           ackNormalisesTrailingSlash = guardAckSlashMatches.success;
           compartmentBuildsWithAck = bwrapAckBuilds.success;
+          # the reason is mandatory, not decorative
+          missingReasonThrows = !guardMissingReasonThrows.success;
+          blankReasonThrows = !guardBlankReasonThrows.success;
         };
         expected = {
           blockedCount = 13;
@@ -335,6 +362,8 @@ in
           ackDoesNotUnlockOthers = true;
           ackNormalisesTrailingSlash = true;
           compartmentBuildsWithAck = true;
+          missingReasonThrows = true;
+          blankReasonThrows = true;
         };
       }
     );

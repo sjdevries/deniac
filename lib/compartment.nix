@@ -186,18 +186,51 @@ rec {
     , context ? "compartment"
     }:
     let
-      acked = map normaliseBindPath allowUnsafeBinds;
+      # Each ack is `{ path = "..."; reason = "..."; }`. The reason is
+      # REQUIRED — see the note on this function for why it is not optional.
+      # Whitespace-only is not a reason. The blankness test is kept
+      # SEPARATE from the reason itself: stripWs is for detecting an empty
+      # ack, never for storing it. Applying it to the stored value would
+      # mangle the very string the build log is supposed to show.
+      isBlank = s:
+        builtins.replaceStrings [ " " "\t" "\n" "\r" ] [ "" "" "" "" ] s == "";
+      acked = map (a: {
+        path = normaliseBindPath a.path;
+        reason = a.reason or "";
+        blank = isBlank (a.reason or "");
+      }) allowUnsafeBinds;
+
+      undocumented = builtins.filter (a: a.blank) acked;
       offender = kind: p:
         let
           why = whyBindUnsafe p;
           n = normaliseBindPath p;
         in
         if why == null then null
-        else if lib.elem n acked then null
+        else if lib.any (a: a.path == n) acked then null
         else { inherit kind p why; };
       bad = builtins.filter (x: x != null)
         (map (offender "read-only") bindReadonly
           ++ map (offender "read-write") bindReadwrite);
+
+      shapeMsg = paths: ''
+        ${context}: every entry in allowUnsafeBinds must carry a non-empty reason.
+
+        Missing a reason: ${toString paths}
+
+        Write it as:
+
+            allowUnsafeBinds = [
+              { path = "${builtins.head paths}"; reason = "why this compartment really needs it"; }
+            ];
+
+        The reason is required because it is the only part of the exception
+        that survives where the exception lives. A commit message can be
+        squashed, dropped in a cherry-pick, or written as "fix"; this sits
+        beside the bind and is still there in a year. If you cannot
+        articulate a reason, that is the guard working — do not open the
+        hatch.
+      '';
       msg = o: ''
         ${context}: refusing to bind the ${o.kind} path "${o.p}" — ${o.why}.
 
@@ -209,26 +242,30 @@ rec {
         Bind the specific subdirectory the app actually needs instead:
             bindReadwrite = [ "/home/<user>/<project>" ];
 
-        If this path is genuinely required, acknowledge it by name:
+        If this path is genuinely required, acknowledge it by name and say
+        why:
 
             bindReadwrite    = [ "${o.p}" ];
-            allowUnsafeBinds = [ "${o.p}" ];
+            allowUnsafeBinds = [
+              { path = "${o.p}"; reason = "why this compartment really needs it"; }
+            ];
 
         The ack must name the exact path and sits beside the bind, so a
-        reviewer sees the permission and its sanction together. Put the
-        reason in the commit message.
+        reviewer sees the permission and its justification together.
       '';
-      # Sanctioned unsafe binds stay LOUD at build time. An exception
-      # opened for one legitimate reason should still be visible in the
-      # build log when someone later asks why a compartment can see the
-      # home directory.
-      sanctioned = builtins.filter (p: whyBindUnsafe p != null) acked;
+      # Sanctioned unsafe binds stay LOUD at build time, and the reason
+      # rides along in the log line. That is what makes writing it feel
+      # worth it rather than punitive: the reason earns a better build log,
+      # and the next person's question gets answered before they ask it.
+      sanctioned = builtins.filter (a: whyBindUnsafe a.path != null) acked;
+      traceBody = lib.concatStrings
+        (map (a: "\n    ${a.path}  —  \"${a.reason}\"") sanctioned);
     in
-    if bad != [ ] then throw (msg (builtins.head bad))
+    if undocumented != [ ] then throw (shapeMsg (map (a: a.path) undocumented))
+    else if bad != [ ] then throw (msg (builtins.head bad))
     else if sanctioned == [ ] then true
     else builtins.trace ''
-      ${context}: binding unsafe path(s) ${toString sanctioned} — acknowledged via allowUnsafeBinds.
-      ${context}: deliberate exception; keep the reason in the commit message.''
+      ${context}: binding unsafe path(s), acknowledged via allowUnsafeBinds:${traceBody}''
       true;
 
   # ── bind allowlists → munix virtiofs flags ──────────────────────────
