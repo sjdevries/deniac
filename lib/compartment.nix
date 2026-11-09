@@ -305,12 +305,43 @@ rec {
   # (wayland/pulse).
   #
   #   name          compartment identity (used in the script name)
-  #   stateDirExpr  SHELL expression for the host-side state dir, e.g.
-  #                 ''"$HOME/.compartments/foo"'' — evaluated at run time so
-  #                 it can depend on $HOME.
+  #   stateDirExpr  A SHELL expression evaluated by the launcher at RUN
+  #                 time — NOT a literal path. Use it when the state
+  #                 location depends on the invoking user's environment:
+  #
+  #                     stateDirExpr = ''"$HOME/.compartments/foo"'';
+  #
+  #                 The `Expr` suffix is load-bearing because Nix cannot
+  #                 type the difference — both forms are `str`. It marks
+  #                 the value as **deliberately unescaped**: `$`, quotes
+  #                 and backticks in it are live shell, not text to be
+  #                 quoted. Do not "fix" the `$` by escaping it; that is
+  #                 what makes the expression resolve.
+  #
+  #                 Why run-time at all: the launcher does not know who is
+  #                 invoking it until it is invoked. A literal
+  #                 `/home/alice/.compartments/foo` builds fine and then
+  #                 hardcodes one user — run it as `bob` and it writes
+  #                 into alice's home.
+  #
+  #                 For a location that genuinely does not depend on the
+  #                 user, pass a plain literal and the expression is just
+  #                 that literal:
+  #
+  #                     stateDirExpr = "/tmp/den-sandbox-fastfetch";
+  #
+  #                 (See `sandbox.fastfetch`, which does exactly this:
+  #                 tmpfs, so nothing persists — the location IS the
+  #                 backup-tier declaration.)
+  #
   #   stateEnvVar   optional env var pointing at the state dir itself
   #                 (e.g. "HERMES_HOME"), distinct from HOME.
   #   homeSubdir    subdir of the state dir used as HOME inside. Default "home".
+  #                 NB: this renders as `--setenv HOME "$SB/home"`, so
+  #                 the substring "/home" appears in every generated
+  #                 launcher even when NO host home path is bound. Tests
+  #                 asserting absence of host homes must match real paths
+  #                 (`/home/alice`), not the bare substring.
   #   command       RAW argv string run inside the compartment, e.g.
   #                 ''"${pkg}/bin/foo -p bar"''. Deliberately not a list and
   #                 deliberately not shell-escaped: this comes from aspect
