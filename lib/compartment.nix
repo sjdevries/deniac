@@ -161,15 +161,25 @@ rec {
       envArgs = lib.concatStringsSep " "
         (lib.mapAttrsToList (k: v: "--setenv ${k} \"${v}\"") env);
       path = lib.makeBinPath packages;
+      # Shell reference to the state dir, e.g. "$PH". Built by concatenation
+      # on purpose: `$${stateVar}` inside an '' … '' string is NOT an
+      # interpolation — it is a literal "$" followed by a literal
+      # "{stateVar}" — which is precisely the bug this replaces. A lone "$"
+      # is literal in Nix strings and interpolation needs "${", so the only
+      # unambiguous way to emit "$" + value is to build the string.
+      sRef = "$" + stateVar;
+      # No trailing backslash here: the template supplies the continuation.
+      # A "\" inside this value plus the template's own "\" renders "\ ",
+      # which the shell reads as an escaped space and the invocation breaks.
       stateEnvLine =
         if stateEnvVar == null then ""
-        else ''--setenv ${stateEnvVar} "$${stateVar}" \'';
+        else "--setenv ${stateEnvVar} \"${sRef}\"";
     in
     pkgs.writeShellScriptBin label ''
       set -eu
       : "''${HOME:?HOME must be set (the compartment state lives under it)}"
       ${stateVar}=${stateDirExpr}
-      mkdir -p "$${stateVar}/${homeSubdir}"
+      mkdir -p "${sRef}/${homeSubdir}"
       exec ${pkgs.bubblewrap}/bin/bwrap \
         --die-with-parent \
         --new-session \
@@ -179,11 +189,11 @@ rec {
         --ro-bind /nix/store /nix/store \
         --ro-bind /etc /etc \
         --ro-bind-try /run/current-system/sw /run/current-system/sw \
-        --bind "$${stateVar}" "$${stateVar}" \
+        --bind "${sRef}" "${sRef}" \
         ${roBinds} \
         ${rwBinds} \
         --unsetenv LD_PRELOAD \
-        --setenv HOME "$${stateVar}/${homeSubdir}" \
+        --setenv HOME "${sRef}/${homeSubdir}" \
         ${stateEnvLine} \
         --setenv XDG_RUNTIME_DIR /tmp \
         --setenv PATH "${path}" \
@@ -227,9 +237,10 @@ rec {
     , stateVar ? "STATE"
     }:
     let
+      sRef = "$" + stateVar; # see the note in mkBwrapCompartment
       stateEnvAssign =
         if stateEnvVar == null then ""
-        else ''${stateEnvVar}="$${stateVar}" '';
+        else "${stateEnvVar}=\"${sRef}\" ";
     in
     pkgs.writeShellScriptBin label ''
       set -eu
@@ -240,14 +251,14 @@ rec {
       fi
       : "''${HOME:?HOME must be set (the compartment state lives under it)}"
       ${stateVar}=${stateDirExpr}
-      mkdir -p "$${stateVar}/${homeSubdir}"
+      mkdir -p "${sRef}/${homeSubdir}"
       exec ${munixPackage}/bin/munix \
         ${virtFlags { inherit network gpu; }} \
         ${storeSliceFlags what storeSlice} \
-        --bind "$${stateVar}" "$${stateVar}" \
+        --bind "${sRef}" "${sRef}" \
         ${munixBindFlags { inherit bindReadonly bindReadwrite; }} \
         "$CLOSURE" -- \
-        env ${guestEnv}${stateEnvAssign}HOME="$${stateVar}/${homeSubdir}" ${command} "$@"
+        env ${guestEnv}${stateEnvAssign}HOME="${sRef}/${homeSubdir}" ${command} "$@"
     '';
 
   # ── preserve-learned-keys merge (generic) ───────────────────────────
