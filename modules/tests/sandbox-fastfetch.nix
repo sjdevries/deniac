@@ -89,7 +89,13 @@ in
           # The strongest single assertion: the string "/home" does not
           # appear in the launcher at all, so no home path of any user is
           # referenced anywhere.
-          homeReferences = count "/home" launcher;
+          # NB: a naive `count "/home"` returns 2 even on a true floor,
+          # because homeSubdir renders `--setenv HOME "$SB/home"` — the
+          # substring is the subdir NAME, not a host home path. Assert on
+          # actual host home paths instead, or the check reports a
+          # violation that is not one.
+          hostHomePaths =
+            count "/home/tux" launcher + count "/home/sdevries" launcher;
           # The floor still runs the right thing and still gets output out.
           runsFastfetch = has "${pkgs.fastfetch}/bin/fastfetch" launcher;
           # Ephemeral tier: the state dir is on tmpfs, declared not defaulted.
@@ -98,7 +104,7 @@ in
         expected = {
           rwBindCount = 1;
           declaredRoBindCount = 1;
-          homeReferences = 0;
+          hostHomePaths = 0;
           runsFastfetch = true;
           stateIsTmpfs = true;
         };
@@ -138,14 +144,20 @@ in
           noGpu = has "--no-gpu" launcher;
           noWayland = has "--no-wayland" launcher;
           noPipewire = has "--no-pipewire" launcher;
-          homeReferences = count "/home" launcher;
+          # NB: a naive `count "/home"` returns 2 even on a true floor,
+          # because homeSubdir renders `--setenv HOME "$SB/home"` — the
+          # substring is the subdir NAME, not a host home path. Assert on
+          # actual host home paths instead, or the check reports a
+          # violation that is not one.
+          hostHomePaths =
+            count "/home/tux" launcher + count "/home/sdevries" launcher;
         };
         expected = {
           noNetwork = true;
           noGpu = true;
           noWayland = true;
           noPipewire = true;
-          homeReferences = 0;
+          hostHomePaths = 0;
         };
       }
     );
