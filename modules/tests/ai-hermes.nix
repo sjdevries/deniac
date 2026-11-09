@@ -53,14 +53,14 @@ in
       }
     );
 
-    # ── bwrap tier: DEFAULT-DENY bind ────────────────────────────────
+    # ── bwrap: DEFAULT-DENY bind ────────────────────────────────
     test-bwrap-default-deny = denTest (
       { inputs, den, deniac, ... }:
       let
         pkgs = import inputs.nixpkgs { system = "x86_64-linux"; };
         hj = import ../../lib/hermes-jail.nix { inherit (pkgs) lib; };
         profile = {
-          tier = "bwrap";
+          enforcement = "bwrap";
           bindReadonly = [ ];
           bindReadwrite = [ "/home/tux/research-out" ];
           mcpServers = { };
@@ -99,14 +99,14 @@ in
       }
     );
 
-    # ── munix tier: --no-network posture + closure + binds ───────────
+    # ── munix: --no-network posture + closure + binds ───────────
     test-munix-no-network = denTest (
       { inputs, den, deniac, ... }:
       let
         pkgs = import inputs.nixpkgs { system = "x86_64-linux"; };
         hj = import ../../lib/hermes-jail.nix { inherit (pkgs) lib; };
         profile = {
-          tier = "munix";
+          enforcement = "munix";
           bindReadonly = [ "/home/tux/work/myrepo" ];
           bindReadwrite = [ ];
           mcpServers = { };
@@ -143,7 +143,7 @@ in
       }
     );
 
-    # ── munix tier: DEFAULT-DENY bind (mirror of the bwrap test) ─────
+    # ── munix: DEFAULT-DENY bind (mirror of the bwrap test) ─────
     # The launcher binds ONLY the declared paths — never the real home,
     # never its root. The store slice limits store *visibility*; this
     # locks the SEPARATE property that host secrets (~/.ssh, ~/.aws,
@@ -156,7 +156,7 @@ in
         pkgs = import inputs.nixpkgs { system = "x86_64-linux"; };
         hj = import ../../lib/hermes-jail.nix { inherit (pkgs) lib; };
         profile = {
-          tier = "munix";
+          enforcement = "munix";
           bindReadonly = [ "/home/tux/work/myrepo" ];
           bindReadwrite = [ "/home/tux/research-out" ];
           mcpServers = { };
@@ -194,7 +194,7 @@ in
       }
     );
 
-    # ── munix tier: store slice, CLOSURE mode (the default) ─────────
+    # ── munix: store slice, CLOSURE mode (the default) ─────────
     # Closure mode binds each closure path as its own virtiofs submount
     # read straight off the host store: no image is built, so N guests
     # cost zero extra disk. The launcher must emit
@@ -210,7 +210,7 @@ in
         pkgs = import inputs.nixpkgs { system = "x86_64-linux"; };
         hj = import ../../lib/hermes-jail.nix { inherit (pkgs) lib; };
         base = {
-          tier = "munix";
+          enforcement = "munix";
           bindReadonly = [ ];
           bindReadwrite = [ ];
           mcpServers = { };
@@ -264,7 +264,7 @@ in
       }
     );
 
-    # ── munix tier: store slice, EROFS mode (opt-in) ────────────────
+    # ── munix: store slice, EROFS mode (opt-in) ────────────────
     # The block-device path stays supported as the boot-latency opt-in.
     # It must emit all three flags: munix hard-errors on `--store-mode
     # erofs` without `--store-dev`, and erofs needs `--sandbox-store` for
@@ -275,7 +275,7 @@ in
         pkgs = import inputs.nixpkgs { system = "x86_64-linux"; };
         hj = import ../../lib/hermes-jail.nix { inherit (pkgs) lib; };
         profile = {
-          tier = "munix";
+          enforcement = "munix";
           bindReadonly = [ ];
           bindReadwrite = [ ];
           mcpServers = { };
@@ -324,7 +324,7 @@ in
         pkgs = import inputs.nixpkgs { system = "x86_64-linux"; };
         hj = import ../../lib/hermes-jail.nix { inherit (pkgs) lib; };
         profile = {
-          tier = "bwrap";
+          enforcement = "bwrap";
           bindReadonly = [ ];
           bindReadwrite = [ ];
           mcpServers = {
@@ -357,7 +357,7 @@ in
       }
     );
 
-    # ── munix tier: `--` terminator before the guest command ─────────
+    # ── munix: `--` terminator before the guest command ─────────
     # munix parses its OWN options anywhere on the command line, so without
     # a `--` terminator it swallows the hermes flags: `-z` dies with
     # "munix: unknown option: -z", and worse, hermes' `-p <profile>` is
@@ -369,7 +369,7 @@ in
         pkgs = import inputs.nixpkgs { system = "x86_64-linux"; };
         hj = import ../../lib/hermes-jail.nix { inherit (pkgs) lib; };
         profile = {
-          tier = "munix";
+          enforcement = "munix";
           bindReadonly = [ ];
           bindReadwrite = [ ];
           mcpServers = { };
@@ -414,7 +414,7 @@ in
       }
     );
 
-    # ── munix tier: headless profiles disable wayland + pipewire ─────
+    # ── munix: headless profiles disable wayland + pipewire ─────
     # `--no-gpu` alone still leaves munix binding the host Wayland socket,
     # so a headless host fails pre-boot with
     #   bwrap: Can't find source path $XDG_RUNTIME_DIR/wayland-1
@@ -424,7 +424,7 @@ in
         pkgs = import inputs.nixpkgs { system = "x86_64-linux"; };
         hj = import ../../lib/hermes-jail.nix { inherit (pkgs) lib; };
         base = {
-          tier = "munix";
+          enforcement = "munix";
           bindReadonly = [ ];
           bindReadwrite = [ ];
           mcpServers = { };
@@ -473,7 +473,7 @@ in
         pkgs = import inputs.nixpkgs { system = "x86_64-linux"; };
         hj = import ../../lib/hermes-jail.nix { inherit (pkgs) lib; };
         base = {
-          tier = "bwrap";
+          enforcement = "bwrap";
           bindReadonly = [ ];
           bindReadwrite = [ ];
           mcpServers = { };

@@ -9,15 +9,15 @@
 # the capability, so a compartment can't be tricked into touching what it
 # was never given.
 #
-# TWO ENFORCEMENT TIERS (match the tier to the threat — they compose):
+# TWO ENFORCEMENT BACKENDS (match the backend to the threat — they compose):
 #
-#   tier = "bwrap"  — a bubblewrap mount-namespace jail. Default-DENY:
+#   enforcement = "bwrap"  — a bubblewrap mount-namespace jail. Default-DENY:
 #       the real home is NOT bound; the agent's HOME is its own profile
 #       `home/` dir, so it literally cannot read ~/.ssh, ~/.aws, browser
 #       profiles, or sibling profiles. Protects the system AND bounds the
 #       blast radius. Sufficient for the confused-deputy threat.
 #
-#   tier = "munix"  — a KVM microVM (munix / libkrun). Separate guest
+#   enforcement = "munix"  — a KVM microVM (munix / libkrun). Separate guest
 #       kernel → jail-escape resistance against a compromised tool/MCP
 #       server, plus per-VM network: `network = "none"` maps to munix
 #       `--no-network` (the reviewer's clean no-net boundary). The guest
@@ -53,7 +53,7 @@
 #         env.GIT_SSH_COMMAND = "ssh -i /home/tux/.ssh/deploy_key";
 #       };
 #       reviewer = {
-#         tier = "munix";
+#         enforcement = "munix";
 #         network = "none";                              # munix --no-network
 #         bindReadonly = [ "/home/tux/work/myrepo" ];
 #         munixPackage = inputs.munix.packages.x86_64-linux.munix;
@@ -84,17 +84,24 @@
       # ── profile submodule ──────────────────────────────────────────
       profileOpts = { name, ... }: {
         options = {
-          tier = lib.mkOption {
+          enforcement = lib.mkOption {
             type = lib.types.enum [ "bwrap" "munix" ];
             default = "munix";
             description = ''
-              Enforcement tier. The TARGET is a munix KVM microVM per
-              compartment (Nix³OS Tier 1): a separate guest kernel for
+              How this compartment is contained. The TARGET is a munix KVM
+              microVM (Nix³OS Tier 1): a separate guest kernel for
               jail-escape containment plus a per-VM routable network.
-              "bwrap" is the FALLBACK — a default-deny bubblewrap jail
-              for hosts without KVM / nested virt, or a deliberately
-              lighter compartment. munix needs `munixPackage` +
-              `munixClosure`.
+              "bwrap" is the FALLBACK — a default-deny bubblewrap jail for
+              hosts without KVM / nested virt, or a deliberately lighter
+              compartment. munix needs `munixPackage` + `munixClosure`.
+
+              Named `enforcement`, not `tier`, on purpose. "tier" is already
+              claimed in this project by the backup data-tier contract
+              (`global` / `lan` / `machine`, see the README), and by MoE
+              expert tiering in `ai.strata`. Three unrelated axes sharing one
+              name is how someone configures the wrong one and sees no error,
+              so the axes get distinct names: `enforcement` = how it is
+              contained, `tier` = where its data is backed up.
             '';
           };
 
@@ -153,7 +160,7 @@
             type = lib.types.enum [ "full" "none" ];
             default = "full";
             description = ''
-              Coarse egress posture (munix tier). "none" → munix
+              Coarse egress posture (munix). "none" → munix
               `--no-network`: a TOTAL boundary — the guest has no outbound
               at all, including no model. Use it only when the model is
               bundled in-VM. "full" → the guest has network; the
@@ -168,7 +175,7 @@
           gpu = lib.mkOption {
             type = lib.types.bool;
             default = false;
-            description = "munix tier: pass GPU through (omit `--no-gpu`). Off by default.";
+            description = "munix: pass GPU through (omit `--no-gpu`). Off by default.";
           };
 
           munixPackage = lib.mkOption {
@@ -176,10 +183,10 @@
             default = null;
             example = lib.literalExpression "inputs.munix.packages.\${system}.munix";
             description = ''
-              munix tier: the munix runner package. Provided by the
+              munix: the munix runner package. Provided by the
               consumer's flake (deniac deliberately does not pin
-              libkrun/KVM for an optional tier). Required when
-              tier = "munix".
+              libkrun/KVM for an optional backend). Required when
+              enforcement = "munix".
             '';
           };
 
@@ -188,9 +195,9 @@
             default = null;
             example = "/nix/store/abcd-reviewer-toplevel";
             description = ''
-              munix tier: the NixOS toplevel closure the microVM boots
+              munix: the NixOS toplevel closure the microVM boots
               (built by the host / a separate aspect; munix's input is
-              `system.build.toplevel`). Required when tier = "munix".
+              `system.build.toplevel`). Required when enforcement = "munix".
             '';
           };
 
@@ -281,7 +288,7 @@
               }
             '';
             description = ''
-              munix tier: closure-only /nix/store (opt-in). `null` keeps
+              munix: closure-only /nix/store (opt-in). `null` keeps
               the whole-host store bind. When set, the guest sees only the
               paths listed in `storePaths`. `mode = "closure"` (the
               default) bind-mounts them straight from the host store at no
@@ -324,7 +331,7 @@
       };
 
       jailFor = name: prof:
-        if prof.tier == "munix" then
+        if prof.enforcement == "munix" then
           hj.mkMunixLauncher pkgs prof.munixPackage name prof
         else
           hj.mkBwrapJail pkgs cfg.package name prof;
