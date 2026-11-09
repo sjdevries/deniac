@@ -6,34 +6,45 @@ the [comfyui-nix](https://github.com/utensils/comfyui-nix) NixOS module
 (a pinned flake input) with a small `deniac.ai.comfyui` option surface
 that maps onto `services.comfyui.*`.
 
-## ⚠ Fork pin — TEMPORARY (read this)
+## Pin — upstream (migrated 2026-11-08)
 
-The `comfyui-nix` flake input is **currently pinned to the `sjdevries`
-fork's `feat/rocm-nightly-channel` branch**, not upstream
-`utensils/comfyui-nix`:
+The `comfyui-nix` flake input points at **upstream
+`github:utensils/comfyui-nix`**:
 
 ```nix
-comfyui-nix.url = "github:sjdevries/comfyui-nix/feat/rocm-nightly-channel";
+comfyui-nix.url = "github:utensils/comfyui-nix";
 ```
 
-This is deliberate: the fork carries the **rocmNightly / rocm72 wheel-channel
-change** being tested on real gfx1151 hardware. **Once the upstream
-rocm7.2 PR merges, re-point the input to `github:utensils/comfyui-nix`**
-and drop the fork. The aspect code itself is unchanged by the re-point —
-only the input URL moves.
+This used to be the `sjdevries` fork's `feat/rocm-nightly-channel`
+branch, while the `rocmChannel` change was being proven on real gfx1151
+hardware. That work merged upstream — **PR #112** (`rocmChannel` + the
+`rocm72` wheel set) and **PR #115** (the safer attention default) — and
+the pin moved back to upstream on 2026-11-08.
+
+**One interface change came with the merge:** the fork's `rocmNightly`
+value does **not** exist upstream. Upstream's `rocmChannel` enum is
+exactly `"rocm71" | "rocm72"`. `rocmNightly` has been removed from the
+aspect's enum to match, so passing it now fails at eval rather than
+silently selecting a wheel set. For gfx1151 the answer is `rocm72`,
+which is a *stable* wheel set — the nightly escape hatch is no longer
+needed on Strix Halo.
 
 ## Why the `rocmChannel` knob exists
 
 AMD's stable pytorch.org ROCm wheels lag new-GPU ISA support by months —
-gfx1030 (5700XT), gfx1100 (7900XTX) and gfx1151 (Strix Halo) all
-needed AMD's nightly channel before the stable wheels carried their ISA.
-`rocmChannel` is the escape hatch:
+gfx1030 (5700XT), gfx1100 (7900XTX) and gfx1151 (Strix Halo) each
+needed a newer wheel set than the then-default before the stable wheels
+carried their ISA. `rocmChannel` makes that a deliberate per-host choice
+rather than inheriting whatever the default happens to be:
 
 | Value | Use |
 | --- | --- |
 | `rocm71` | Stable ROCm 7.1 wheels (default). |
-| `rocm72` | Stable ROCm 7.2 — **first stable whose HSA runtime (Ext 1.15 + gfx11-generic ISA) runs on gfx1151**; `rocm71` SEGVs at the first kernel launch there. |
-| `rocmNightly` | AMD's gfx1151 nightly wheels, for AMD GPUs ahead of any stable wheel. |
+| `rocm72` | Stable ROCm 7.2 (torch 2.14.x) — **first stable whose HSA runtime (Ext 1.15 + gfx11-generic ISA) runs on gfx1151**; `rocm71` SEGVs at the first kernel launch there. |
+
+The enum mirrors upstream's exactly. There is no nightly value: after the
+`rocm72` merge, every AMD GPU targeted here is covered by a stable wheel
+set.
 
 No effect unless `gpuSupport = "rocm"`.
 
@@ -64,7 +75,7 @@ den.aspects.igloo.includes = [ deniac.ai.comfyui ];
 den.aspects.igloo.nixos.deniac.ai.comfyui = {
   enable = true;
   gpuSupport = "rocm";
-  rocmChannel = "rocm72";   # or "rocmNightly" ahead of stable
+  rocmChannel = "rocm72";   # gfx1151 (Strix Halo) needs >= rocm72
   user = "tux";
 };
 ```
@@ -91,15 +102,21 @@ shared-model goal — see the model-store doc.
 
 ## Provenance
 
-Wraps the [comfyui-nix](https://github.com/utensils/comfyui-nix) NixOS
-module (currently the `sjdevries` fork for the rocmNightly/rocm72
-change). The `deniac.ai.comfyui` option surface, the `rocmChannel`
-mapping, and the fork-pin note are deniac's. ComfyUI model weights are
-not bundled.
+Wraps the upstream [comfyui-nix](https://github.com/utensils/comfyui-nix)
+NixOS module. The `rocmChannel` + `rocm72` wheel-set work and the safer
+attention default originated on a `sjdevries` fork for gfx1151 hardware
+validation and **merged upstream in PRs #112 and #115**; the deniac input
+was re-pointed to upstream on 2026-11-08 and the option surface verified
+against upstream `main` the same day. The `deniac.ai.comfyui` option
+surface and the `rocmChannel` mapping are deniac's. ComfyUI model weights
+are not bundled.
 
 ## Tests
 
 `flake.tests.ai-comfyui` (denTest, host `igloo`): namespace export;
 inert-by-default (wrapped service off, defaults hold); enabled with
-`rocm` + `rocm72` mapping onto `services.comfyui.*`; the `rocmNightly`
-escape hatch + custom user mapping through.
+`rocm` + `rocm72` mapping onto `services.comfyui.*`; custom user
+mapping through; **`rocmNightly` is rejected** — this guards the
+migration and goes red if the value is ever re-added to the enum without
+upstream carrying it; and the `rocm72` →
+`rocmUsePyTorchAttention = true` coupling holds.

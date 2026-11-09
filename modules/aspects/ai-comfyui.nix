@@ -5,9 +5,14 @@
 #
 # Why this aspect exists: AMD's stable pytorch.org ROCm wheels lag new-GPU
 # ISA support by months — gfx1030 (5700XT), gfx1100 (7900XTX) and gfx1151
-# (Strix Halo) all needed AMD's nightly channel before the stable wheels
-# carried their ISA. The `rocmChannel` knob gives a host an escape hatch to
-# run ComfyUI on an AMD GPU the stable wheels don't cover yet.
+# (Strix Halo) each needed a newer wheel set than the then-default before the
+# stable wheels carried their ISA. The `rocmChannel` knob makes that a
+# deliberate per-host choice instead of inheriting whatever the default
+# happens to be.
+#
+# For gfx1151 the answer is now `rocmChannel = "rocm72"` — the first STABLE
+# release whose HSA runtime (Ext 1.15) + gfx11-generic ISA actually runs on
+# that iGPU. Verified on real hardware 2026-10-31.
 #
 # Usage (a host running ComfyUI on a Strix Halo iGPU):
 #
@@ -15,7 +20,7 @@
 #   den.aspects.igloo.nixos.deniac.ai.comfyui = {
 #     enable = true;
 #     gpuSupport = "rocm";
-#     rocmChannel = "rocmNightly";   # gfx1151 nightly wheels
+#     rocmChannel = "rocm72";   # gfx1151 (Strix Halo) needs >= rocm72
 #     user = "tux";
 #   };
 #
@@ -24,10 +29,13 @@
 # directly on the host via `services.comfyui.*` — this aspect wraps only the
 # common ones.
 #
-# NOTE: the pinned input is currently the sjdevries fork's
-# `feat/rocm-nightly-channel` branch (see flake.nix) so the rocmNightly
-# change can be tested on real gfx1151 hardware before the upstream PR
-# merges. Re-point to github:utensils/comfyui-nix once merged.
+# NOTE (2026-11-08): this input used to be the sjdevries fork's
+# nightly-channel branch while the rocmChannel change was being proven on
+# real gfx1151 hardware. It merged upstream (utensils/comfyui-nix #112 +
+# #115) and the pin moved back to upstream. `rocmNightly` was a value on
+# that fork branch only — it is NOT an upstream option, so it has been
+# removed from the enum below. Passing it would now fail at eval with an
+# attribute lookup error inside comfyui-nix's python-overrides.
 
 { inputs, lib, ... }:
 let
@@ -43,9 +51,10 @@ in
       service, wrapping the utensils/comfyui-nix flake (pinned input).
 
       The `rocmChannel` knob selects the ROCm wheel set when
-      `gpuSupport = "rocm"`: "rocm71" / "rocm72" (stable) or
-      "rocmNightly" (AMD's gfx1151 nightly, for AMD GPUs ahead of the
-      stable wheels — e.g. Strix Halo / Ryzen AI MAX 395).
+      `gpuSupport = "rocm"`: "rocm71" (default) or "rocm72" (stable,
+      torch 2.14.x). Use "rocm72" for gfx1151 (Strix Halo / Ryzen AI MAX
+      395) — the first stable release whose HSA runtime actually runs on
+      that iGPU.
     '';
 
     nixos =
@@ -70,20 +79,27 @@ in
         };
 
         rocmChannel = lib.mkOption {
-          type = lib.types.enum [ "rocm71" "rocm72" "rocmNightly" ];
+          type = lib.types.enum [ "rocm71" "rocm72" ];
           default = "rocm71";
           description = ''
             When `gpuSupport = "rocm"`, which ROCm wheel set to use.
+            Mirrors comfyui-nix's own `rocmChannel` enum exactly — keep the
+            two in sync when bumping the input.
 
             - "rocm71" (default): the stable ROCm 7.1 wheels.
-            - "rocm72": the stable ROCm 7.2 wheels. Use this for gfx1151
-              (Strix Halo): it is the first stable whose HSA runtime
-              (Ext 1.15 + gfx11-generic ISA) runs on that iGPU — rocm71
-              SEGVs at the first kernel launch there.
-            - "rocmNightly": AMD's gfx1151 nightly wheels, for AMD GPUs
-              whose ISA no stable wheel carries yet.
+            - "rocm72": the stable ROCm 7.2 wheels (torch 2.14.x). Use this
+              for gfx1151 (Strix Halo): it is the first stable whose HSA
+              runtime (Ext 1.15 + gfx11-generic ISA) runs on that iGPU —
+              rocm71 SEGVs at the first kernel launch there.
 
             No effect unless `gpuSupport = "rocm"`.
+
+            comfyui-nix also flips `rocmUsePyTorchAttention` to true
+            automatically when this is "rocm72" — gfx1151 ships no xformers
+            `ckF` kernels, so the default xformers path raises "No operator
+            found for memory_efficient_attention_forward". That knob is not
+            re-exposed here; set `services.comfyui.rocmUsePyTorchAttention`
+            directly if you need to override it.
           '';
         };
 

@@ -83,9 +83,12 @@
       }
     );
 
-    # The rocmNightly escape hatch maps through too (the reason the fork
-    # exists — gfx1151 ahead of the stable wheels).
-    test-rocm-nightly-channel = denTest (
+    # `rocmNightly` existed only on the sjdevries fork branch this input
+    # used to point at. Upstream's `rocmChannel` enum is exactly
+    # "rocm71" | "rocm72", so the value must now be REJECTED. This test
+    # guards the migration: if someone re-adds "rocmNightly" to the aspect
+    # enum without upstream carrying it, this goes red.
+    test-rocm-nightly-rejected = denTest (
       { inputs, den, deniac, igloo, ... }:
       {
         imports = [ (inputs.den.namespace "deniac" [ inputs.self ]) ];
@@ -98,13 +101,37 @@
           user = "tux";
         };
 
+        expr = igloo.services.comfyui.rocmChannel;
+        expectedError = {
+          type = "ThrownError";
+          msg = "is not of type";
+        };
+      }
+    );
+
+    # Upstream pairs rocm72 with a safer attention default: gfx1151 ships no
+    # xformers `ckF` kernels, so comfyui-nix flips `rocmUsePyTorchAttention`
+    # on automatically when rocmChannel == "rocm72". Assert the default
+    # still follows, so a future upstream change to that coupling is caught.
+    test-rocm72-attention-default = denTest (
+      { inputs, den, deniac, igloo, ... }:
+      {
+        imports = [ (inputs.den.namespace "deniac" [ inputs.self ]) ];
+        den.hosts.x86_64-linux.igloo = { };
+        den.aspects.igloo.includes = [ deniac.ai.comfyui ];
+        den.aspects.igloo.nixos.deniac.ai.comfyui = {
+          enable = true;
+          gpuSupport = "rocm";
+          rocmChannel = "rocm72";
+        };
+
         expr = {
           rocmChannel = igloo.services.comfyui.rocmChannel;
-          user = igloo.services.comfyui.user;
+          attention = igloo.services.comfyui.rocmUsePyTorchAttention;
         };
         expected = {
-          rocmChannel = "rocmNightly";
-          user = "tux";
+          rocmChannel = "rocm72";
+          attention = true;
         };
       }
     );

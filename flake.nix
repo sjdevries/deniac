@@ -15,11 +15,15 @@
     # NOTE: this input is SHARED between dsh and hermes-agent — bumping it moves
     # both. hermes went 0.8.4 -> 0.22.5 here (deliberate, user-approved).
     llm-agents.url = "github:numtide/llm-agents.nix/0784674971b3ee4681aea5b5e9641c75faf7e846";
-    # ComfyUI (node-graph image/video gen UI) — TEMPORARILY pinned to the
-    # sjdevries fork's `feat/rocm-nightly-channel` branch to test the
-    # rocmNightly wheel-channel change on real gfx1151 hardware before the
-    # upstream PR merges. Re-point to github:utensils/comfyui-nix once merged.
-    comfyui-nix.url = "github:sjdevries/comfyui-nix/feat/rocm-nightly-channel";
+    # ComfyUI (node-graph image/video gen UI) — pinned to UPSTREAM
+    # github:utensils/comfyui-nix as of 2026-11-08. The rocmChannel work
+    # that was tested on real gfx1151 hardware through the sjdevries fork
+    # has merged upstream (PR #112 = rocmChannel + the rocm72 wheel set,
+    # PR #115 = the safer attention default). Verified against upstream
+    # main the same day: `rocmChannel` is an enum of exactly
+    # "rocm71" | "rocm72" — there is NO `rocmNightly` upstream, so that
+    # value was dropped from the aspect's enum in the same commit.
+    comfyui-nix.url = "github:utensils/comfyui-nix";
     # Official ACE-Step ComfyUI nodes — a thin API client (torch/numpy/
     # requests only) for the ACE-Step 1.5 music-gen server: text2music,
     # cover/remix, repaint. Plain node repo (no flake.nix), so it is
