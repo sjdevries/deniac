@@ -28,8 +28,12 @@ let
     < builtins.stringLength hay;
 
   # Occurrence count, so "exactly one" is asserted rather than "at least
-  # one" or "not zero".
-  count = needle: hay: builtins.length (builtins.splitString needle hay) - 1;
+  # one" or "not zero". Built from the length delta rather than
+  # builtins.splitString, which this Nix does not provide.
+  count = needle: hay:
+    (builtins.stringLength hay -
+      builtins.stringLength (builtins.replaceStrings [ needle ] [ "" ] hay))
+    / builtins.stringLength needle;
 in
 {
   flake.tests.sandbox-fastfetch = {
