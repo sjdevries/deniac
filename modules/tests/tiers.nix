@@ -36,7 +36,7 @@
     test-derived-unlock = denTest (
       { inputs, den, deniac, ... }:
       let
-        t = import ../../lib/tiers.nix { lib = import inputs.nixpkgs.lib; };
+        t = import ../../lib/tiers.nix { lib = inputs.nixpkgs.lib; };
       in
       {
         expr = {
@@ -67,7 +67,7 @@
     test-recovery-loss-modes = denTest (
       { inputs, den, deniac, ... }:
       let
-        t = import ../../lib/tiers.nix { lib = import inputs.nixpkgs.lib; };
+        t = import ../../lib/tiers.nix { lib = inputs.nixpkgs.lib; };
       in
       {
         expr = {
@@ -90,7 +90,7 @@
     test-portable-requires-rewrap = denTest (
       { inputs, den, deniac, ... }:
       let
-        lib = import inputs.nixpkgs.lib;
+        lib = inputs.nixpkgs.lib;
         t = import ../../lib/tiers.nix { inherit lib; };
         evalResolve = d:
           t.resolve
@@ -135,7 +135,7 @@
     test-total-loss-requires-reason = denTest (
       { inputs, den, deniac, ... }:
       let
-        lib = import inputs.nixpkgs.lib;
+        lib = inputs.nixpkgs.lib;
         t = import ../../lib/tiers.nix { inherit lib; };
         evalResolve = d:
           t.resolve
@@ -172,7 +172,7 @@
     test-tier-enum-is-closed = denTest (
       { inputs, den, deniac, ... }:
       let
-        lib = import inputs.nixpkgs.lib;
+        lib = inputs.nixpkgs.lib;
         t = import ../../lib/tiers.nix { inherit lib; };
         evalResolve = d:
           t.resolve
