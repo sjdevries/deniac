@@ -3,15 +3,15 @@
 # WHY THIS FILE EXISTS
 #
 # The tier vocabulary (`machine` / `lan` / `global`) has existed as prose
-# since the framework draft of 2026-08-30, but nothing in this library
-# *typed* it. `lib/compartment.nix` has no tier field at all; its current
-# substitute is a comment saying a tmpfs state dir "IS the backup-tier
-# declaration". That is a demonstration, not a declaration — it works
-# only because tmpfs is the trivial ephemeral case, and it teaches the
-# wrong lesson if copied to anything that persists.
+# since the framework draft of 2026-08-30 but nothing typed it.
+# `lib/compartment.nix` has no tier field at all; its substitute is a
+# comment saying a tmpfs state dir "IS the backup-tier declaration". That
+# is a demonstration, not a declaration — it works only because tmpfs is
+# the trivial ephemeral case, and it teaches the wrong lesson if copied to
+# anything that persists.
 #
-# This file makes the tier a real type with real consequences, so that a
-# tier is something you CHECK rather than something you remember.
+# This file makes the tier a real type with real consequences, so a tier
+# is something you CHECK rather than something you remember.
 #
 # ONE TAG, THREE RESOLVERS
 #
@@ -32,7 +32,7 @@
 #     must not be openable by the machine alone, or the off-site copy is
 #     plaintext to whoever holds it.
 #
-# If a consumer could set `tier = "global"` and `unlock = tpm2-only`, the
+# If a consumer could set `tier = "global"` with a `tpm2`-only unlock, the
 # tier would be LYING about its exposure. Deriving instead of offering is
 # what keeps the tag meaning what it says.
 #
@@ -47,7 +47,7 @@
 # the intended theft protection — but it means the tier describes where
 # copies GO, not whether you can OPEN them there. A `global` tier you
 # cannot restore off-LAN is not a backup, it is a hostage. Hence
-# `portable` and `recovery` below, and the assertion in `checkStateDecl`.
+# `portable` and the assertions below.
 #
 # WHAT IS DELIBERATELY NOT HERE
 #
@@ -77,26 +77,26 @@ rec {
   # NOT independently settable. See the causal rule in the header: the
   # tier's exposure determines the key depth.
   #
-  # Returns a descriptor. `requires` names what must be reachable or
-  # present at unlock time — that list is the whole reason this table is
-  # worth reading before choosing a tier.
+  # `requires` names what must be reachable or present at unlock time —
+  # that list is the whole reason this table is worth reading before
+  # choosing a tier.
   unlockFor = tier: {
     machine = {
-      method     = "tpm2";
-      requires   = [ "this host's TPM2" ];
-      unattended = true;
+      method          = "tpm2";
+      requires        = [ "this host's TPM2" ];
+      unattended      = true;
       offsiteOpenable = false;   # no off-site copy exists
     };
     lan = {
-      method     = "tpm2";
-      requires   = [ "this host's TPM2" ];
-      unattended = true;
+      method          = "tpm2";
+      requires        = [ "this host's TPM2" ];
+      unattended      = true;
       offsiteOpenable = false;   # no off-site copy exists
     };
     global = {
-      method     = "tpm2+tang";
-      requires   = [ "this host's TPM2" "a reachable Tang server" ];
-      unattended = true;
+      method          = "tpm2+tang";
+      requires        = [ "this host's TPM2" "a reachable Tang server" ];
+      unattended      = true;
       # The point of the whole table: an off-site copy of global-tier
       # state cannot be opened off-LAN without the break-glass path.
       offsiteOpenable = false;
@@ -109,34 +109,90 @@ rec {
   # discovered during an incident: **the tiers that are most convenient to
   # operate are the hardest to recover, and the tier that is easiest to
   # recover is the one you cannot automate.**
-  #
-  # `db` / vault-tier (TPM2 + passphrase) is not in `tierType` because
-  # it is not a replication tier — it is an unlock tier. Where it appears
-  # below it is named explicitly so the two vocabularies do not blur.
   recoveryFor = tier: {
     machine = {
       method   = "escrowed recovery key, or none";
-      lossMode = "TOTAL — a dead TPM2 loses the state unless a recovery key was escrowed out-of-band.";
-      note     = "Cheapest tier to run, worst recovery. Fine for rebuildable state; catastrophic for anything unique.";
+      lossMode = "TOTAL";
+      detail   = "A dead TPM2 loses the state unless a recovery key was escrowed out-of-band. Cheapest tier to run, worst recovery: fine for rebuildable state, catastrophic for anything unique.";
     };
     lan = {
       method   = "escrowed recovery key, or the NAS copy";
-      lossMode = "TOTAL for this host. The NAS copy is encrypted under the NAS's OWN TPM2, not yours — it is not your recovery path unless it was re-wrapped for you.";
-      note     = "The most commonly misunderstood cell in this table. A lan-tier NAS copy is a copy of ciphertext you may not be able to open.";
+      lossMode = "TOTAL";
+      detail   = "The most commonly misunderstood cell in this table. The NAS copy is encrypted under the NAS's OWN TPM2, not yours — it is NOT your recovery path unless it was re-wrapped for you.";
     };
     global = {
       method   = "passphrase break-glass, or re-wrap onto a new host";
-      lossMode = "RECOVERABLE only if a break-glass path was declared. If the Tang server's key is the only path, the Tang box is a single point of failure for EVERY off-site restore.";
-      note     = "Where the Tang server lives is unresolved and load-bearing: on the LAN it is unreachable exactly when off-site restore is wanted; off-site it is a network-exposed oracle.";
+      lossMode = "PARTIAL";
+      detail   = "Recoverable only if a break-glass path was declared. If the Tang server's key is the only path, the Tang box is a single point of failure for EVERY off-site restore. Where Tang lives is unresolved and load-bearing: on the LAN it is unreachable exactly when off-site restore is wanted; off-site it is a network-exposed oracle.";
     };
   }.${tier};
+
+  # ── the validation ────────────────────────────────────────────────
+  #
+  # HOW THIS IS WIRED, AND THE THREE WAYS THAT FAILED FIRST
+  #
+  # Every one of these failures was SILENT, which is the actual lesson:
+  #
+  #   1. `rewrap = lib.mkIf (config.portable && config.rewrap == null)
+  #        (builtins.throw …)` inside the submodule's `config` is
+  #        INFINITE RECURSION — resolving `config.rewrap` forces the
+  #        condition, which reads `config.rewrap`.
+  #
+  #   2. `config.asserts = [ … ]` inside a submodule fails outright:
+  #        "The option `d.asserts' does not exist." `asserts` is declared
+  #        by a NixOS module, not by `lib.evalModules`, so it is not in
+  #        scope inside a bare submodule.
+  #
+  #   3. `types.addCheck (types.submodule …) f` **does not fire at all.**
+  #        Verified with an always-false check: a plain `types.attrs` type
+  #        rejects it, the submodule returns the value untouched. The
+  #        submodule merge path bypasses the added `check`.
+  #
+  # What DOES work: an internal option whose default calls the validator,
+  # in the FUNCTOR form of the submodule (`{ config, ... }: …`) so
+  # `config` is actually in scope — inside a non-functor `options` block
+  # it is not, which is why attempt 1 also had a scoping problem hiding
+  # behind the recursion.
+  #
+  # It still has to be FORCED. `resolve` below forces it, so any consumer
+  # that goes through the documented entry point is validated. A consumer
+  # that reads raw fields without forcing `_validated` is NOT validated —
+  # which is why `resolve` is the documented entry point rather than a
+  # convenience.
+  validateDecl = cfg:
+    if cfg.portable && cfg.rewrap == null then
+      throw ''
+        portable = true requires `rewrap` to name the mechanism that
+        re-encrypts this state's key for a new host.
+
+        The tier travels with the declaration; the unlock mechanism does
+        not, because TPM2 sealing is per-machine. Without a rewrap path a
+        portable ${cfg.tier}-tier declaration describes a VM that cannot
+        be opened on any host but the one that made it.
+
+        Either name the mechanism (e.g. rewrap = "agenix-rekey"), or set
+        portable = false and accept that this state is host-bound.
+      ''
+    else if (recoveryFor cfg.tier).lossMode == "TOTAL" && cfg.recoveryReason == "" then
+      throw ''
+        tier = "${cfg.tier}" has recovery loss mode TOTAL
+        (${(recoveryFor cfg.tier).method}).
+
+        Set recoveryReason to one line saying why losing this state is
+        acceptable, or move it to a tier with a real recovery path.
+        An empty reason is not an answer.
+
+        ${(recoveryFor cfg.tier).detail}
+      ''
+    else
+      true;
 
   # ── the declaration ───────────────────────────────────────────────
   #
   # Only `tier` is a free choice. `portable` defaults to false, and
-  # setting it true forces the author to name a re-wrap mechanism —
-  # because the tier travels with the declaration while the unlock
-  # mechanism is HOST-BOUND (TPM2 is per-machine).
+  # setting it true forces the rewrap option to be named — because the
+  # tier travels with the declaration while the unlock mechanism is
+  # HOST-BOUND (TPM2 is per-machine).
   #
   # Recreating a VM from backup on a different host moves the tier and
   # the replication leg fine and BREAKS the unlock leg. Three ways out:
@@ -150,7 +206,7 @@ rec {
   #
   # Option 2 is the only one preserving both the tier's exposure
   # semantics and the ability to move.
-  stateDeclType = types.submodule ({ name, config, ... }: {
+  stateDeclType = types.submodule ({ config, ... }: {
     options = {
       tier = mkOption {
         type = tierType;
@@ -193,48 +249,28 @@ rec {
         description = ''
           Why the declared recovery path is acceptable for this data.
 
-          Required (non-empty) whenever {option}`portable` is true or the
-          tier's default recovery is `TOTAL`. Same rule as
+          Required (non-empty) whenever the tier's recovery loss mode is
+          TOTAL — which today means `machine` and `lan`. Same rule as
           `allowUnsafeBinds` in the compartment bind guard: an optional
           reason is a reason nobody writes, and if you cannot articulate
           why the loss is acceptable, that is the guard working.
         '';
       };
+
+      # The guard itself. Internal, and forced by `resolve`.
+      #
+      # NOTE: this is only evaluated if something forces it. That is a
+      # real limitation of a lazy language and it is why `resolve` is the
+      # documented entry point: going through it is what makes the check
+      # run. Reading raw fields off a declaration bypasses validation.
+      _validated = mkOption {
+        type = types.raw;
+        internal = true;
+        default = validateDecl config;
+      };
     };
 
-    config = {
-      # portable without a rewrap mechanism is a thing that cannot
-      # actually be restored elsewhere. Fail at eval, not at 3 a.m.
-      rewrap = lib.mkIf (config.portable && config.rewrap == null) (
-        builtins.throw ''
-          deniac tier declaration '${name}': portable = true requires `rewrap` to name the
-          mechanism that re-encrypts this state's key for a new host.
-
-          The tier travels with the declaration; the unlock mechanism does
-          not, because TPM2 sealing is per-machine. Without a rewrap path,
-          a portable ${config.tier}-tier declaration describes a VM that
-          cannot be opened on any host but the one that made it.
-
-          Either name the mechanism (e.g. rewrap = "agenix-rekey"), or
-          set portable = false and accept that this state is host-bound.
-        ''
-      );
-
-      # A TOTAL loss mode must be acknowledged in writing.
-      recoveryReason = lib.mkIf (
-        (config.portable || (recoveryFor config.tier).lossMode == "TOTAL")
-        && config.recoveryReason == ""
-      ) (
-        builtins.throw ''
-          deniac tier declaration '${name}': tier = "${config.tier}" has recovery
-          loss mode TOTAL (${(recoveryFor config.tier).method}).
-
-          Set recoveryReason to one line saying why losing this state is
-          acceptable, or move it to a tier with a real recovery path.
-          An empty reason is not an answer.
-        ''
-      );
-    };
+    config = { };
   });
 
   # ── the composed view a consumer actually wants ────────────────────
@@ -242,9 +278,14 @@ rec {
   # Pure function: declaration in, full descriptor out. Lets a
   # replication or persistence resolver see all three legs at once
   # without re-deriving them and drifting from this table.
-  resolve = decl: {
-    inherit (decl) tier portable rewrap recoveryReason;
-    unlock   = unlockFor decl.tier;
-    recovery = recoveryFor decl.tier;
-  };
+  #
+  # This is the DOCUMENTED ENTRY POINT on purpose: the `builtins.seq` on
+  # `_validated` is what makes the guard run. A consumer that reads raw
+  # fields instead never triggers it.
+  resolve = decl:
+    builtins.seq decl._validated {
+      inherit (decl) tier portable rewrap recoveryReason;
+      unlock   = unlockFor decl.tier;
+      recovery = recoveryFor decl.tier;
+    };
 }
