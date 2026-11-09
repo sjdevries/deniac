@@ -131,7 +131,13 @@ rec {
   #   stateEnvVar   optional env var pointing at the state dir itself
   #                 (e.g. "HERMES_HOME"), distinct from HOME.
   #   homeSubdir    subdir of the state dir used as HOME inside. Default "home".
-  #   command       argv run inside, as a list of strings.
+  #   command       RAW argv string run inside the compartment, e.g.
+  #                 ''"${pkg}/bin/foo -p bar"''. Deliberately not a list and
+  #                 deliberately not shell-escaped: this comes from aspect
+  #                 config (declared, reviewed, built-in), never from runtime
+  #                 input, and escaping it would rewrite the very command
+  #                 line the tests pin. Treat it like a template in a
+  #                 Makefile, not like user data.
   #   packages      packages providing PATH inside the compartment.
   #   env           extra --setenv pairs.
   mkBwrapCompartment = pkgs:
@@ -145,6 +151,7 @@ rec {
     , bindReadonly ? [ ]
     , bindReadwrite ? [ ]
     , label ? "compartment-${name}"
+    , stateVar ? "STATE"
     }:
     let
       roBinds = lib.concatStringsSep " "
@@ -154,16 +161,15 @@ rec {
       envArgs = lib.concatStringsSep " "
         (lib.mapAttrsToList (k: v: "--setenv ${k} \"${v}\"") env);
       path = lib.makeBinPath packages;
-      cmdStr = lib.concatStringsSep " " (map lib.escapeShellArg command);
       stateEnvLine =
         if stateEnvVar == null then ""
-        else ''--setenv ${stateEnvVar} "$STATE" \'';
+        else ''--setenv ${stateEnvVar} "$${stateVar}" \'';
     in
     pkgs.writeShellScriptBin label ''
       set -eu
       : "''${HOME:?HOME must be set (the compartment state lives under it)}"
-      STATE=${stateDirExpr}
-      mkdir -p "$STATE/${homeSubdir}"
+      ${stateVar}=${stateDirExpr}
+      mkdir -p "$${stateVar}/${homeSubdir}"
       exec ${pkgs.bubblewrap}/bin/bwrap \
         --die-with-parent \
         --new-session \
@@ -173,16 +179,16 @@ rec {
         --ro-bind /nix/store /nix/store \
         --ro-bind /etc /etc \
         --ro-bind-try /run/current-system/sw /run/current-system/sw \
-        --bind "$STATE" "$STATE" \
+        --bind "$${stateVar}" "$${stateVar}" \
         ${roBinds} \
         ${rwBinds} \
         --unsetenv LD_PRELOAD \
-        --setenv HOME "$STATE/${homeSubdir}" \
+        --setenv HOME "$${stateVar}/${homeSubdir}" \
         ${stateEnvLine} \
         --setenv XDG_RUNTIME_DIR /tmp \
         --setenv PATH "${path}" \
         ${envArgs} \
-        -- ${cmdStr} "$@"
+        -- ${command} "$@"
     '';
 
   # ── generic munix microVM compartment ───────────────────────────────
@@ -198,7 +204,8 @@ rec {
   # isolated.
   #
   #   closure       the NixOS toplevel the guest boots (a store path)
-  #   command       argv run inside the guest, after `--`
+  #   command       RAW argv string run inside the guest after the `--`
+  #                 terminator (same convention as mkBwrapCompartment above)
   #   guestEnv      env assignments prefixed to the guest command (a raw
   #                 shell fragment — see secretEnvAssignments)
   mkMunixCompartment = pkgs:
@@ -217,11 +224,12 @@ rec {
     , guestEnv ? ""
     , label ? "munix-${name}"
     , what ? label
+    , stateVar ? "STATE"
     }:
     let
       stateEnvAssign =
         if stateEnvVar == null then ""
-        else ''${stateEnvVar}="$STATE" '';
+        else ''${stateEnvVar}="$${stateVar}" '';
     in
     pkgs.writeShellScriptBin label ''
       set -eu
@@ -231,15 +239,15 @@ rec {
         exit 1
       fi
       : "''${HOME:?HOME must be set (the compartment state lives under it)}"
-      STATE=${stateDirExpr}
-      mkdir -p "$STATE/${homeSubdir}"
+      ${stateVar}=${stateDirExpr}
+      mkdir -p "$${stateVar}/${homeSubdir}"
       exec ${munixPackage}/bin/munix \
         ${virtFlags { inherit network gpu; }} \
         ${storeSliceFlags what storeSlice} \
-        --bind "$STATE" "$STATE" \
+        --bind "$${stateVar}" "$${stateVar}" \
         ${munixBindFlags { inherit bindReadonly bindReadwrite; }} \
         "$CLOSURE" -- \
-        env ${guestEnv}${stateEnvAssign}HOME="$STATE/${homeSubdir}" ${lib.concatStringsSep " " (map lib.escapeShellArg command)} "$@"
+        env ${guestEnv}${stateEnvAssign}HOME="$${stateVar}/${homeSubdir}" ${command} "$@"
     '';
 
   # ── preserve-learned-keys merge (generic) ───────────────────────────

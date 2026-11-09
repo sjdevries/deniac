@@ -1,26 +1,32 @@
-# lib/hermes-jail.nix — pure jail & config generation for deniac.ai.hermes.
+# lib/hermes-jail.nix — hermes-specific config generation + compartment wiring.
+#
+# This file used to own the containment mechanics. It no longer does: those
+# moved to ./compartment.nix, because they turned out to carry no hermes
+# content. What remains here is the two genuinely app-specific holes:
+#
+#   1. WHAT gets rendered into the compartment's state dir
+#      — config.yaml (mcp_servers + settings, with provider inference)
+#      — SOUL.md (the persona)
+#      — and the preserve-learned merge that reconciles declared vs learned
+#
+#   2. WHAT runs inside, and under which identity
+#      — `hermes -p <name>`, with HERMES_HOME at the profile dir
+#
+# Everything else — default-deny binds, store-slice dispatch, headless
+# flags, runtime secret injection — is the generic shape in compartment.nix
+# and is shared with every future "run this app as a VM" aspect.
 #
 # This file lives OUTSIDE modules/ on purpose: den's import-tree loads every
-# .nix under modules/ as a module, so shared pure functions can't live there
-# (they'd be eval'd as broken aspects). Both the aspect and its tests import
-# this file directly.
+# .nix under modules/ as a module, so shared pure functions can't live
+# there (they'd be eval'd as broken aspects). Both the aspect and its tests
+# import this file directly.
 #
-# Every function is a pure function of (pkgs, …) so the security-critical
-# logic — the default-deny bind, the per-profile `-p <name>` baking, the
-# declared-config rendering — is unit-testable with a real `pkgs` and a
-# plain profile attrset, WITHOUT a home-manager eval.
-#
-# The security model (see the fleet research note for the rationale):
-#   * default-DENY — the real home is never bound; the agent's HOME is its
-#     own profile `home/` dir, so it cannot read ~/.ssh, ~/.aws, browser
-#     profiles, or sibling profiles.
-#   * per-profile capability — each profile gets its own tools (mcpServers)
-#     and persona (SOUL.md), rendered into its config.yaml.
-#   * tier match-to-threat — bwrap (namespace) for the confused-deputy
-#     threat; munix (KVM microVM) when a compromised tool/MCP server must
-#     not reach the host kernel, plus per-VM network (`--no-network`).
+# The security model is documented in ./compartment.nix and is unchanged.
 
 { lib }:
+let
+  c = import ./compartment.nix { inherit lib; };
+in
 rec {
   # ── declared config.yaml ───────────────────────────────────────────
   # JSON is a subset of YAML, so this renders a valid config.yaml body.
@@ -66,174 +72,76 @@ rec {
   renderProfileSoul = pkgs: name: prof:
     pkgs.writeText "hermes-profile-${name}-SOUL.md" prof.soul;
 
-  # Preserve-learned-keys merge: deep-merge the declared config over the
-  # profile's existing config.yaml. Declared keys win; keys the agent
-  # LEARNED (experience tier) are kept. YAML-aware (the agent writes YAML;
-  # the declared file is JSON, which is valid YAML).
-  mergeScript = pkgs:
-    let
-      py = pkgs.python3.withPackages (ps: [ ps.pyyaml ]);
-    in
-    pkgs.writeShellScript "hermes-merge-config" ''
-      set -eu
-      declared="$1"; target="$2"
-      ${py}/bin/python - "$declared" "$target" <<'PY'
-      import yaml, os, sys
+  # Preserve-learned-keys merge. Now generic — see
+  # compartment.mergeDeclaredOverLearned. Kept under this name because the
+  # aspect's home.activation calls it, and because "merge the declared
+  # config over what the agent learned" is the hermes phrasing of a general
+  # rule.
+  mergeScript = c.mergeDeclaredOverLearned;
 
-      def deep(a, b):  # b (declared) wins over a (learned)
-          out = dict(a) if isinstance(a, dict) else {}
-          for k, v in b.items():
-              if isinstance(v, dict) and isinstance(out.get(k), dict):
-                  out[k] = deep(out[k], v)
-              else:
-                  out[k] = v
-          return out
-
-      declared = yaml.safe_load(open(sys.argv[1])) or {}
-      target = sys.argv[2]
-      learned = {}
-      if os.path.exists(target):
-          try:
-              learned = yaml.safe_load(open(target)) or {}
-          except Exception:
-              learned = {}
-      with open(target, "w") as f:
-          yaml.safe_dump(deep(learned, declared), f, default_flow_style=False)
-      PY
-    '';
-
-  # ── bwrap-tier jail: DEFAULT-DENY bind ─────────────────────────────
-  # The real $HOME is NOT bound. The agent's HOME is its profile's own
-  # `home/` dir (which lives inside the bound profile dir), so the rest of
-  # the real home — ~/.ssh, ~/.aws, browser profiles, sibling profiles —
-  # is simply absent inside the jail. XDG_RUNTIME_DIR points at the tmpfs
-  # /tmp so the agent gets a fresh runtime dir instead of the real
-  # session sockets (wayland/pulse).
+  # ── bwrap-enforced jail: DEFAULT-DENY bind ─────────────────────────
+  # The mechanics are generic; the hermes parts are the identity
+  # (`hermes -p <name>`), the state dir (`~/.hermes/profiles/<name>`), and
+  # HERMES_HOME pointing at it.
+  #
+  # `stateVar = "PH"` (profile home) keeps the generated script identical
+  # to the pre-extraction one, so the existing default-deny tests remain a
+  # valid regression net without being edited to match the refactor.
   mkBwrapJail = pkgs: hermesPkg: name: prof:
-    let
-      roBinds = lib.concatStringsSep " "
-        (map (d: "--ro-bind-try ${lib.escapeShellArg d} ${lib.escapeShellArg d}") prof.bindReadonly);
-      rwBinds = lib.concatStringsSep " "
-        (map (d: "--bind ${lib.escapeShellArg d} ${lib.escapeShellArg d}") prof.bindReadwrite);
-      envArgs = lib.concatStringsSep " "
-        (lib.mapAttrsToList (k: v: "--setenv ${k} \"${v}\"") prof.env);
-      path = lib.makeBinPath ([ hermesPkg ] ++ prof.extraPackages);
-    in
-    pkgs.writeShellScriptBin "hermes-jailed-${name}" ''
-      set -eu
-      : "''${HOME:?HOME must be set (the profile home lives under it)}"
-      PH="$HOME/.hermes/profiles/${name}"
-      mkdir -p "$PH/home"
-      exec ${pkgs.bubblewrap}/bin/bwrap \
-        --die-with-parent \
-        --new-session \
-        --dev /dev \
-        --proc /proc \
-        --tmpfs /tmp \
-        --ro-bind /nix/store /nix/store \
-        --ro-bind /etc /etc \
-        --ro-bind-try /run/current-system/sw /run/current-system/sw \
-        --bind "$PH" "$PH" \
-        ${roBinds} \
-        ${rwBinds} \
-        --unsetenv LD_PRELOAD \
-        --setenv HOME "$PH/home" \
-        --setenv HERMES_HOME "$PH" \
-        --setenv XDG_RUNTIME_DIR /tmp \
-        --setenv PATH "${path}" \
-        ${envArgs} \
-        -- ${hermesPkg}/bin/hermes -p ${name} "$@"
-    '';
+    c.mkBwrapCompartment pkgs {
+      inherit name;
+      label = "hermes-jailed-${name}";
+      stateVar = "PH";
+      stateDirExpr = ''"$HOME/.hermes/profiles/${name}"'';
+      stateEnvVar = "HERMES_HOME";
+      homeSubdir = "home";
+      command = "${hermesPkg}/bin/hermes -p ${name}";
+      packages = [ hermesPkg ] ++ (prof.extraPackages or [ ]);
+      env = prof.env or { };
+      bindReadonly = prof.bindReadonly or [ ];
+      bindReadwrite = prof.bindReadwrite or [ ];
+    };
 
-  # ── munix-tier launcher ────────────────────────────────────────────
+  # ── munix-enforced microVM launcher ────────────────────────────────
   # Boots the declared NixOS toplevel closure in a KVM microVM via munix.
-  # The bind allowlist is passed as virtiofs mounts; the network posture
-  # maps to munix `--no-network` (the reviewer's clean no-net boundary).
-  # The guest closure is a declared input (built by the host / a separate
-  # aspect); this launcher only wires the flags.
+  #
+  # Profile-config delivery mirrors the bwrap jail: the host activation
+  # renders this profile's config.yaml + SOUL.md into
+  # $HOME/.hermes/profiles/<name>, and the launcher binds THAT directory
+  # read-write into the VM so learned keys and session state persist back
+  # to the host. Only this profile's dir is bound, so sibling profiles stay
+  # isolated. Without this the VM's hermes boots with no soul, no settings,
+  # and no MCP servers.
+  #
+  # The model key is the runtime-secret case: `modelKeySecret` names a
+  # DECRYPTED file (agenix /run/agenix/<n> or sops /run/secrets/<n>) that
+  # the launcher reads at run time and passes in as HERMES_MODEL_KEY. It is
+  # never a build-time string — the closure is the guest's store-visibility
+  # allowlist, so a baked secret would be visible to everything that can
+  # see the closure.
   mkMunixLauncher = pkgs: munixPkg: name: prof:
     let
-      netFlag = if prof.network == "none" then "--no-network" else "";
-      gpuFlag = if !prof.gpu then "--no-gpu" else "";
-      # A GPU-less profile is headless, and `--no-gpu` alone is NOT enough:
-      # munix still tries to bind the host Wayland socket, so on a headless
-      # host the run dies before the VM starts with
-      #   bwrap: Can't find source path $XDG_RUNTIME_DIR/wayland-1
-      # Verified live 2026-10-30. Audio has the same problem via pipewire.
-      headlessFlags = if !prof.gpu then "--no-wayland --no-pipewire" else "";
-      # Opt-in closure-only /nix/store: the guest sees only the paths its
-      # own closure needs, not the whole host store. null = the whole-host
-      # store bind (unchanged default).
-      #
-      # Two modes, one option (`storeSlice.mode`), both consuming the SAME
-      # pkgs.closureInfo `store-paths` file:
-      #
-      #   closure — `--store-mode closure --store-paths <file>`. Each
-      #     closure path becomes its own virtiofs submount. ZERO extra
-      #     disk: the guest reads the host store's own bytes, so N guests
-      #     cost N×0. This is the default and the mode a fleet should run.
-      #
-      #   erofs — `--store-mode erofs --store-dev <image> --sandbox-store
-      #     <file>`. The closure is materialised as one erofs block device
-      #     mounted by micro-activate. Cheaper at boot (1 mount, not ~1.2k)
-      #     but it costs a full copy of the closure on disk PER GUEST —
-      #     measured 2.65 GiB compressed (lz4) for the researcher slice.
-      #     Kept as the explicit opt-in for boot-latency-sensitive guests.
-      #
-      # Both need a munix that has `--store-mode` (our fork branch
-      # `feat/store-mode`; upstream clan/munix PR #40).
-      storeFlags =
-        let
-          slice = prof.storeSlice or null;
-          mode = if slice == null then null else slice.mode or "closure";
-        in
-        if slice == null then ""
-        else if mode == "closure" then
-          "--store-mode closure --store-paths ${lib.escapeShellArg slice.storePaths}"
-        else if mode == "erofs" then
-          "--store-mode erofs --store-dev ${lib.escapeShellArg slice.image} "
-          + "--sandbox-store ${lib.escapeShellArg slice.storePaths}"
-        else
-          throw ''
-            deniac.ai.hermes: storeSlice.mode must be "closure" or "erofs", got "${mode}".
-          '';
-      roBinds = lib.concatStringsSep " "
-        (map (d: "--ro-bind ${lib.escapeShellArg d} ${lib.escapeShellArg d}") prof.bindReadonly);
-      rwBinds = lib.concatStringsSep " "
-        (map (d: "--bind ${lib.escapeShellArg d} ${lib.escapeShellArg d}") prof.bindReadwrite);
-      # Model key: null = keyless (halogen today). If set, the launcher
-      # reads the decrypted secret file (agenix /run/agenix/<n> or sops
-      # /run/secrets/<n>) at run time and passes it into the VM as
-      # HERMES_MODEL_KEY. Never baked into the nix store.
-      keyEnv =
-        if prof.modelKeySecret or null != null then
-          ''HERMES_MODEL_KEY="$(cat ${lib.escapeShellArg prof.modelKeySecret})" ''
-        else
-          "";
+      keySecret =
+        if prof.modelKeySecret or null != null
+        then [ { var = "HERMES_MODEL_KEY"; file = prof.modelKeySecret; } ]
+        else [ ];
     in
-    pkgs.writeShellScriptBin "hermes-munix-${name}" ''
-      set -eu
-      CLOSURE="${prof.munixClosure}"
-      if [ -z "$CLOSURE" ]; then
-        echo "hermes-munix-${name}: munixClosure is not set (required for tier = munix)" >&2
-        exit 1
-      fi
-      : "''${HOME:?HOME must be set (the profile home lives under it)}"
-      # ── profile-config delivery (mirrors the bwrap jail) ──────────
-      # The host activation renders this profile's config.yaml + SOUL.md
-      # at $HOME/.hermes/profiles/<name>. Bind it into the VM rw (so
-      # learned keys + session state persist back to the host) and point
-      # HERMES_HOME at it. Without this the VM's hermes boots with NO
-      # soul / settings / MCP servers. Only THIS profile's dir is bound,
-      # so sibling profiles stay isolated.
-      PH="$HOME/.hermes/profiles/${name}"
-      mkdir -p "$PH/home"
-      exec ${munixPkg}/bin/munix \
-        ${netFlag} ${gpuFlag} ${headlessFlags} \
-        ${storeFlags} \
-        --bind "$PH" "$PH" \
-        ${roBinds} ${rwBinds} \
-        "$CLOSURE" -- \
-        env ${keyEnv}HERMES_HOME="$PH" HOME="$PH/home" hermes -p ${name} "$@"
-    '';
+    c.mkMunixCompartment pkgs {
+      inherit name;
+      label = "hermes-munix-${name}";
+      what = "deniac.ai.hermes";
+      stateVar = "PH";
+      munixPackage = munixPkg;
+      closure = prof.munixClosure;
+      stateDirExpr = ''"$HOME/.hermes/profiles/${name}"'';
+      stateEnvVar = "HERMES_HOME";
+      homeSubdir = "home";
+      command = "hermes -p ${name}";
+      network = prof.network or "full";
+      gpu = prof.gpu or false;
+      storeSlice = prof.storeSlice or null;
+      guestEnv = c.secretEnvAssignments keySecret;
+      bindReadonly = prof.bindReadonly or [ ];
+      bindReadwrite = prof.bindReadwrite or [ ];
+    };
 }
