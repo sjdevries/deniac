@@ -74,6 +74,51 @@ any backend consumes the tags.
 
 Path scheme: `persistent.<domain>.<host>.<user>.<tier>.<aspect>`
 
+> **Status of this contract:** documented, **not yet implemented.** No
+> `global` / `lan` / `machine` enum exists in the codebase and nothing
+> consumes the tags yet. It is a design commitment, not a mechanism.
+> Backup intelligence cannot be retrofitted — a backup layer can only read
+> tiers that an aspect declared — so wiring this is a precondition on every
+> future aspect that owns mutable state, not a later feature.
+
+### The compartment shape
+
+Aspects that run software in isolation — an agent, a desktop app as a VM, a
+build sandbox — all need the same four things. `lib/compartment.nix` holds
+that shape so each aspect supplies only what is genuinely app-specific:
+
+| Declares | Meaning |
+| --- | --- |
+| `enforcement` | **how it is contained** — `bwrap` (mount namespace) or `munix` (KVM microVM) |
+| `binds` | **what it may touch** — a default-DENY allowlist; the real home is never bound |
+| `stateDirExpr` | **where its state lives** — materialised at activation, not baked into the closure |
+| `command` | **what actually runs** inside |
+
+Two properties are load-bearing and shared by every compartment:
+
+- **The closure is the visibility allowlist.** A guest sees only what its
+  closure contains, which is what makes `enforcement = "munix"` a real
+  boundary rather than a suggestion. It also forces the secret rule: a
+  secret baked at build time would be visible to everything that can see
+  the closure, so secrets are read from their decrypted runtime path at
+  launch and never enter the store.
+- **Declared vs learned reconciles at activation.** The closure declares,
+  the state dir accumulates, and a preserve-learned deep merge keeps the
+  two from clobbering each other. This is what makes an immutable closure
+  compatible with mutable user settings.
+
+`ai.hermes` is the reference implementation: it fills the two app-shaped
+holes (what gets rendered into the state dir, and `hermes -p <name>`) and
+inherits the rest.
+
+> **Naming.** `enforcement` is how a compartment is contained. `tier` is
+> where its data is backed up. These are deliberately different words:
+> "set the tier to `munix`" and "set the tier to `lan`" are both
+> grammatically natural and mean unrelated things, and picking wrong
+> produces no error. `ai.strata` also uses "tiering" for MoE experts
+> across VRAM/RAM/SSD, which is prose about memory hierarchy rather than a
+> configurable axis, so it does not collide.
+
 ## Status
 
 - [x] Design — aspect model, data-tier contract, public/private split
@@ -106,6 +151,18 @@ Path scheme: `persistent.<domain>.<host>.<user>.<tier>.<aspect>`
           helper (CivitAI/HF → model-store config entry)
 - [x] Proper den tests (`denTest`) — all eleven suites, green under nix-unit
 - [x] Per-aspect documentation — `docs/ai-*.md`
+- [x] **Compartment shape** — `lib/compartment.nix`: the four declared
+          things (enforcement / binds / state dir / command) shared by
+          every isolated-app aspect. Extracted from `ai.hermes`, which is
+          now a thin adapter over it. `ai.hermes` 10/10 under nix-unit.
+- [ ] **Backup-tier contract wired** — the `global` / `lan` / `machine`
+          enum is documentation only. Needs implementing, plus a check
+          that no aspect declares mutable state without a tier. Until
+          then, "backup-agnostic" is a promise rather than a mechanism.
+- [ ] **Secrets into a compartment** — the runtime-injection path exists
+          (`secretEnvAssignments`) but the general key-distribution story
+          across VMs is undesigned. The one thing the aspect model does
+          not yet answer.
 - [ ] More aspects (the rest of the software I actually use)
 - [ ] Templates + examples
 
