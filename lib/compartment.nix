@@ -99,8 +99,106 @@ rec {
     in
     "${netFlag} ${gpuFlag} ${headlessFlags}";
 
+  # ── bind safety: a home root is never a legal bind ──────────────────
+  # DEFAULT-DENY is only worth what the allowlist costs to open by
+  # accident. Binding a home directory itself hands a compartment ~/.ssh,
+  # ~/.gnupg, every browser profile and every sibling compartment in one
+  # line — a total isolation failure that reads like a convenience
+  # setting. This rejects it at EVAL time so it cannot ship, rather than
+  # relying on review to catch it every time.
+  #
+  # Rejected (exact match after normalisation):
+  #   /                the host filesystem root
+  #   /home            every user's home at once
+  #   /root            root's home
+  #   /home/<user>     any home-directory root
+  #   ~  ~user  $HOME  unexpanded home references
+  #   <any>/<base>     where <base> is a credential or whole-app-state root
+  #
+  # Allowed: anything strictly BELOW a home. `/home/alice/code` is the
+  # normal, intended pattern; `/home/alice` is not. `.config` itself is
+  # rejected because binding it binds every app's state, credentials
+  # included — while `.config/foo` is an ordinary single-app bind.
+  unsafeBindBases = [
+    ".ssh"
+    ".gnupg"
+    ".aws"
+    ".azure"
+    ".config"
+    ".pki"
+    ".mozilla"
+    ".netrc"
+    ".npmrc"
+    ".docker"
+  ];
+
+  # Returns a phrase explaining why a bind path is unsafe, or null if fine.
+  whyBindUnsafe = path:
+    let
+      p = lib.removeSuffix "/" path;
+      parts = lib.filter (x: x != "") (lib.splitString "/" p);
+      last = if parts == [ ] then "" else lib.last parts;
+    in
+    if path == "/" then
+      "the host filesystem root"
+    else if p == "" || p == "~" || p == "$HOME" || p == "\${HOME}" then
+      "an unexpanded home reference"
+    else if p == "/" then
+      "the host filesystem root"
+    else if p == "/home" then
+      "every user's home directory at once"
+    else if p == "/root" then
+      "root's home directory"
+    else if builtins.length parts == 2 && lib.head parts == "home" then
+      "a home-directory root, which contains the user's credentials and every app profile"
+    else if lib.elem last unsafeBindBases then
+      "a credential or whole-app-state root"
+    else
+      null;
+
+  # Throws on the first offending bind. Returns true when everything is
+  # clean, so callers can use it as an `assert`.
+  assertSafeBinds =
+    { bindReadonly ? [ ]
+    , bindReadwrite ? [ ]
+    , context ? "compartment"
+    }:
+    let
+      offender = kind: p:
+        let why = whyBindUnsafe p; in
+        if why == null then null else ''
+          ${context}: refusing to bind the ${kind} path "${p}" — ${why}.
+
+          A compartment's bind list is an ALLOWLIST: everything in it is
+          visible to whatever runs inside, including a compromised
+          compartment. Binding a home root, `/`, or a credential directory
+          is not a wide permission — it is the end of the isolation.
+
+          Bind the specific subdirectory the app actually needs instead:
+              bindReadwrite = [ "/home/<user>/<project>" ];
+
+          If one of the rejected paths is genuinely required, add it to
+          `unsafeBindBases` in lib/compartment.nix deliberately, in its own
+          commit. That is the point of this check: the dangerous line has to
+          become a deliberate edit to a shared library file rather than a
+          convenience in a host config.
+        '';
+      bad = builtins.filter (x: x != null)
+        (map (offender "read-only") bindReadonly
+          ++ map (offender "read-write") bindReadwrite);
+    in
+    if bad == [ ] then true
+    else throw (builtins.head bad);
+
   # ── bind allowlists → munix virtiofs flags ──────────────────────────
-  munixBindFlags = { bindReadonly ? [ ], bindReadwrite ? [ ] }:
+  munixBindFlags =
+    { bindReadonly ? [ ]
+    , bindReadwrite ? [ ]
+    , context ? "munix compartment"
+    }:
+    assert (assertSafeBinds {
+      inherit bindReadonly bindReadwrite context;
+    });
     let
       ro = lib.concatStringsSep " "
         (map (d: "--ro-bind ${lib.escapeShellArg d} ${lib.escapeShellArg d}") bindReadonly);
@@ -154,8 +252,14 @@ rec {
     , stateVar ? "STATE"
     }:
     let
-      roBinds = lib.concatStringsSep " "
-        (map (d: "--ro-bind-try ${lib.escapeShellArg d} ${lib.escapeShellArg d}") bindReadonly);
+      # Forced via the bind rendering below so an unsafe list cannot render.
+      bindSafety = assertSafeBinds {
+        inherit bindReadonly bindReadwrite;
+        context = "bwrap compartment ${name}";
+      };
+      roBinds = assert bindSafety;
+        lib.concatStringsSep " "
+          (map (d: "--ro-bind-try ${lib.escapeShellArg d} ${lib.escapeShellArg d}") bindReadonly);
       rwBinds = lib.concatStringsSep " "
         (map (d: "--bind ${lib.escapeShellArg d} ${lib.escapeShellArg d}") bindReadwrite);
       envArgs = lib.concatStringsSep " "

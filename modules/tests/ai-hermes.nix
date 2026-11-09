@@ -194,6 +194,109 @@ in
       }
     );
 
+    # ── bind safety: a home root cannot be bound at all ─────────
+    # The check that makes DEFAULT-DENY robust to a typo rather than only
+    # to a careful author. Binding `/home/<user>` hands a compartment
+    # ~/.ssh, ~/.gnupg, every browser profile and every sibling
+    # compartment in one line — a total isolation failure that reads like
+    # a convenience setting. These tests pin that such a line fails at
+    # EVAL time, before any script is written, AND that ordinary
+    # subdirectory binds still pass — so the check cannot be quietly
+    # loosened into uselessness, nor tightened until it blocks the
+    # legitimate pattern.
+    #
+    # Exact counts are asserted rather than just "all blocked": emptying
+    # the input lists would otherwise turn the test vacuously green.
+    test-bind-safety = denTest (
+      { inputs, den, deniac, ... }:
+      let
+        pkgs = import inputs.nixpkgs { system = "x86_64-linux"; };
+        cp = import ../../lib/compartment.nix { inherit (pkgs) lib; };
+        blocked = [
+          "/"
+          "/home"
+          "/root"
+          "/home/tux"
+          "/home/sdevries"
+          "~"
+          "$HOME"
+          "/home/tux/.ssh"
+          "/home/tux/.gnupg"
+          "/home/tux/.config"
+          "/home/tux/.aws"
+          "/home/tux/.mozilla"
+          "/home/tux/.docker"
+        ];
+        allowed = [
+          "/home/tux/code"
+          "/home/tux/research-out"
+          "/home/tux/.compartments/hermes-researcher"
+          "/var/lib/comfyui"
+          "/nix/store"
+        ];
+        # tryEval so the throw is OBSERVED rather than aborting the suite.
+        # .drvPath is selected deliberately: it forces the derivation to be
+        # CONSTRUCTED, which forces the rendered script text where the
+        # assert lives. A bare tryEval of the returned set stops at WHNF
+        # and never reaches it — the guard would look inert while passing.
+        homeBind = builtins.tryEval (
+          (cp.mkBwrapCompartment pkgs {
+            name = "evil";
+            stateDirExpr = ''"$HOME/.compartments/evil"'';
+            command = "true";
+            bindReadwrite = [ "/home/tux" ];
+          }).drvPath
+        );
+        credBind = builtins.tryEval (
+          (cp.mkMunixCompartment pkgs {
+            name = "evil2";
+            stateDirExpr = ''"$HOME/.compartments/evil2"'';
+            command = "true";
+            munixPackage = pkgs.hello;
+            closure = "/nix/store/fake-toplevel";
+            bindReadonly = [ "/home/tux/.ssh" ];
+          }).drvPath
+        );
+        # the guard itself, called directly — independent of any builder
+        guardDirect = builtins.tryEval (cp.assertSafeBinds {
+          bindReadonly = [ ];
+          bindReadwrite = [ "/home/tux" ];
+          context = "test";
+        });
+        # and that a clean list does NOT throw, so the guard is not a
+        # blanket failure that would break every compartment
+        guardClean = builtins.tryEval (cp.assertSafeBinds {
+          bindReadonly = [ "/home/tux/work/myrepo" ];
+          bindReadwrite = [ "/home/tux/research-out" ];
+          context = "test";
+        });
+      in
+      {
+        expr = {
+          blockedCount = builtins.length
+            (builtins.filter (p: cp.whyBindUnsafe p != null) blocked);
+          allowedCount = builtins.length
+            (builtins.filter (p: cp.whyBindUnsafe p == null) allowed);
+          # the classifier must not be vacuously true in either direction
+          nothingWronglyBlocked = builtins.length
+            (builtins.filter (p: cp.whyBindUnsafe p != null) allowed) == 0;
+          bwrapHomeBindThrows = !homeBind.success;
+          munixCredBindThrows = !credBind.success;
+          guardThrowsOnHome = !guardDirect.success;
+          guardAllowsOrdinary = guardClean.success && guardClean.value == true;
+        };
+        expected = {
+          blockedCount = 13;
+          allowedCount = 5;
+          nothingWronglyBlocked = true;
+          bwrapHomeBindThrows = true;
+          munixCredBindThrows = true;
+          guardThrowsOnHome = true;
+          guardAllowsOrdinary = true;
+        };
+      }
+    );
+
     # ── munix: store slice, CLOSURE mode (the default) ─────────
     # Closure mode binds each closure path as its own virtiofs submount
     # read straight off the host store: no image is built, so N guests
