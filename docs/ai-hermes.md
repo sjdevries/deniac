@@ -30,10 +30,10 @@ The model is three strategies, matched to each role:
 *human* reviews before it reaches a privileged compartment. Never
 researcher → coder directly; the human is the gate.
 
-## Two enforcement tiers (compose, don't compete)
+## Two enforcement backends (compose, don't compete)
 
-Match the tier to the threat. They are not alternatives to choose between
-globally — each profile picks its tier.
+Match the backend to the threat. They are not alternatives to choose between
+globally — each profile picks its backend.
 
 | | **bwrap** (Tier A) | **munix** (Tier B) |
 |---|---|---|
@@ -42,9 +42,9 @@ globally — each profile picks its tier.
 | Network | all-or-nothing (`--unshare-net` cuts localhost too) | per-VM: `--no-network` is a clean boundary |
 | Cost | near-zero | KVM + a guest closure |
 
-**`tier = "munix"` is the default — the target.** The Nix³OS model puts
+**`enforcement = "munix"` is the default — the target.** The Nix³OS model puts
 every agent compartment in a Tier-1 microVM: a uniform strong boundary
-(separate guest kernel) with a per-VM routable network. **`tier =
+(separate guest kernel) with a per-VM routable network. **`enforcement =
 "bwrap"` is the fallback** — for hosts without KVM / nested virt, or a
 compartment you deliberately want lighter.
 
@@ -134,7 +134,7 @@ podman is not a configuration of that module — it contradicts it — and
 on this fleet the sudoless path failed completely (and the sudo
 compromise too). Bubblewrap delivers the jail with none of that:
 
-| | upstream container mode | bwrap tier |
+| | upstream container mode | bwrap |
 |---|---|---|
 | Daemon | podman/dockerd | none |
 | Privilege | root (sudo for CLI) | your user |
@@ -155,7 +155,7 @@ Each profile (`profiles.<name>`):
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `tier` | `"bwrap"` \| `"munix"` | `"munix"` | Enforcement tier (munix = target; bwrap = fallback for non-KVM hosts) |
+| `enforcement` | `"bwrap"` \| `"munix"` | `"munix"` | How the compartment is contained (munix = target; bwrap = fallback for non-KVM hosts) |
 | `bindReadonly` | [str] | `[]` | Host dirs bound read-only |
 | `bindReadwrite` | [str] | `[]` | Host dirs bound read-write (the compartment's workspace) |
 | `mcpServers` | attrs | `{}` | The compartment's tools, rendered to `config.yaml` `mcp_servers` |
@@ -231,7 +231,7 @@ den.aspects.tux.homeManager.deniac.ai.hermes = {
     # A deliberately-lighter compartment opts into the bwrap fallback
     # (e.g. a host without KVM, or a trusted local-only task).
     trusted-local = {
-      tier = "bwrap";
+      enforcement = "bwrap";
       bindReadwrite = [ "/home/tux/work/trusted" ];
     };
   };
@@ -298,7 +298,7 @@ because the key is not in its world.
 
 ```nix
 coder = {
-  tier = "munix";
+  enforcement = "munix";
   bindReadwrite = [ "/home/tux/coder-worktree" "/home/tux/coder-scratch" ];
   bindReadonly  = [ "/home/tux/research-out" ];   # researcher's findings, read-only
   # NOT bound: ~/.ssh, ~/.aws, the creator compartment, host secrets.
@@ -419,7 +419,7 @@ need ever emerges, the declared path is preserved here for reuse:
 neutts 1.4.1 (PyPI) + neucodec as vendored `buildPythonPackage`
 expressions riding nixpkgs' `torch`/`torchaudio`/`transformers`/
 `librosa`/`soundfile`/`phonemizer` — hash-pinned, store-built. Do NOT
-pip-install into the mutable layer for configuration; that tier is for
+pip-install into the mutable layer for configuration; that layer is for
 experience only.
 
 ## Provenance
@@ -432,7 +432,7 @@ experience only.
   (community-first survey) and prior jail experiments; the wrapper is
   hand-rolled because the current upstream API is too minimal for the
   compartment model.
-- munix tier: [Clan munix](https://git.clan.lol/clan/munix) (muvm /
+- munix: [Clan munix](https://git.clan.lol/clan/munix) (muvm /
   libkrun), consumed as a consumer-provided package (`munixPackage`),
   not pinned in deniac.
 
