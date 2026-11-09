@@ -40,14 +40,14 @@
       in
       {
         expr = {
-          machine = (t.unlockFor "machine").method;
-          lan     = (t.unlockFor "lan").method;
-          global  = (t.unlockFor "global").method;
+          machine = (t.unlockFor "machine" "fixed").method;
+          lan     = (t.unlockFor "lan" "fixed").method;
+          global  = (t.unlockFor "global" "fixed").method;
           # The point of the whole table: an off-site copy of global-tier
           # state cannot be opened off-LAN without break-glass.
-          globalOffsiteOpenable = (t.unlockFor "global").offsiteOpenable;
+          globalOffsiteOpenable = (t.unlockFor "global" "fixed").offsiteOpenable;
           globalNeedsTang = builtins.elem "a reachable Tang server"
-            (t.unlockFor "global").requires;
+            (t.unlockFor "global" "fixed").requires;
         };
         expected = {
           machine = "tpm2";
@@ -192,6 +192,151 @@
       {
         expr = { unknownTierRejected = !bogus.success; };
         expected = { unknownTierRejected = true; };
+      }
+    );
+
+    # ── mobility removes Tang from a travelling host's unlock path ────
+    #
+    # THE RULE: for a host that moves, the second factor must be carried
+    # or typed, never a place. Tang's whole security is that the oracle is
+    # somewhere the attacker is not — a host that leaves cannot rely on
+    # that, and every workaround that bridges the initrd gap (overlay in
+    # initrd) makes the machine carry its own path to the oracle, which
+    # is not a factor at all.
+    #
+    # Note the mobile branch is TIER-INDEPENDENT: on a mobile host the
+    # exposure is not scoped by tier. Once the disk unlocks, everything
+    # on it is readable, not just the tier-tagged data.
+    test-mobile-excludes-tang = denTest (
+      { inputs, den, deniac, ... }:
+      let
+        t = import ../../lib/tiers.nix { lib = inputs.nixpkgs.lib; };
+        mobileGlobal = t.unlockFor "global" "mobile";
+        fixedGlobal = t.unlockFor "global" "fixed";
+      in
+      {
+        expr = {
+          mobileTangAllowed = mobileGlobal.tangAllowed;
+          mobileMethod = mobileGlobal.method;
+          mobileFactorClass = mobileGlobal.factorClass;
+          mobileNeedsHuman = builtins.elem "a FIDO2 key or passphrase"
+            mobileGlobal.requires;
+          # The contrast that makes the point: the SAME tier on a host
+          # that does not move does get a place-based factor.
+          fixedTangAllowed = fixedGlobal.tangAllowed;
+          fixedFactorClass = fixedGlobal.factorClass;
+          # Mobility overrides rather than combines: every tier goes
+          # human-factor on a mobile host.
+          mobileMachineMethod = (t.unlockFor "machine" "mobile").method;
+          mobileLanMethod = (t.unlockFor "lan" "mobile").method;
+        };
+        expected = {
+          mobileTangAllowed = false;
+          mobileMethod = "tpm2+human";
+          mobileFactorClass = "carried-or-typed";
+          mobileNeedsHuman = true;
+          fixedTangAllowed = true;
+          fixedFactorClass = "place";
+          mobileMachineMethod = "tpm2+human";
+          mobileLanMethod = "tpm2+human";
+        };
+      }
+    );
+
+    # ── the default is the SAFE one ───────────────────────────────────
+    #
+    # mobility defaults to "mobile" deliberately. The two ways to get
+    # this wrong fail very differently:
+    #
+    #   stationary host wrongly left `mobile`  -> cannot use Tang, demands
+    #     a human at boot. Fails LOUDLY and IMMEDIATELY.
+    #   travelling host wrongly set `fixed`    -> Tang-derived unlock that
+    #     BRICKS the first time it boots out of reach. Fails LATENTLY,
+    #     FAR FROM THE MISTAKE — at a hotel, at 2 a.m.
+    #
+    # So the default is chosen so the likely error is the one you find
+    # out about right away.
+    test-mobility-default-is-the-safe-one = denTest (
+      { inputs, den, deniac, ... }:
+      let
+        lib = inputs.nixpkgs.lib;
+        t = import ../../lib/tiers.nix { inherit lib; };
+        # A declaration that says nothing about mobility.
+        d = (lib.evalModules {
+          modules = [
+            {
+              options.d = lib.mkOption { type = t.stateDeclType; };
+              config.d = { tier = "lan"; recoveryReason = "x"; };
+            }
+          ];
+        }).config.d;
+      in
+      {
+        expr = {
+          defaultMobility = d.mobility;
+          defaultTangAllowed = (t.resolve d).unlock.tangAllowed;
+        };
+        expected = {
+          defaultMobility = "mobile";
+          defaultTangAllowed = false;
+        };
+      }
+    );
+
+    # ── a fixed global host must name its Tang plan ───────────────────
+    #
+    # Tang is deliberately NOT a backup: it holds no client data, but
+    # its own long-term keys are the only thing that can reconstitute
+    # every binding made against them. A single Tang server is therefore
+    # a single point of failure for every off-site restore, and upstream
+    # warns that deleting old keys is irreversible. So the combination
+    # that silently depends on a Tang — fixed + global — has to say what
+    # the deployment actually is.
+    test-fixed-global-requires-tang-plan = denTest (
+      { inputs, den, deniac, ... }:
+      let
+        lib = inputs.nixpkgs.lib;
+        t = import ../../lib/tiers.nix { inherit lib; };
+        evalResolve = d:
+          t.resolve
+            (lib.evalModules {
+              modules = [
+                {
+                  options.d = lib.mkOption { type = t.stateDeclType; };
+                  config.d = d;
+                }
+              ];
+            }).config.d;
+        noPlan = builtins.tryEval (evalResolve {
+          tier = "global";
+          mobility = "fixed";
+          recoveryReason = "off-site copy exists";
+        });
+        withPlan = builtins.tryEval (evalResolve {
+          tier = "global";
+          mobility = "fixed";
+          recoveryReason = "off-site copy exists";
+          tangPlan = "2 servers (home + VPS), separate failure domains, SSS 1-of-2";
+        });
+        # A MOBILE global host needs no plan: mobility excludes Tang from
+        # the unlock path entirely, so there is no oracle to plan for.
+        mobileNoPlan = builtins.tryEval (evalResolve {
+          tier = "global";
+          mobility = "mobile";
+          recoveryReason = "off-site copy exists";
+        });
+      in
+      {
+        expr = {
+          missingPlanRejected = !noPlan.success;
+          withPlanAccepted = withPlan.success;
+          mobileNeedsNoPlan = mobileNoPlan.success;
+        };
+        expected = {
+          missingPlanRejected = true;
+          withPlanAccepted = true;
+          mobileNeedsNoPlan = true;
+        };
       }
     );
   };

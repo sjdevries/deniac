@@ -72,36 +72,83 @@ rec {
     global  = "Replicated on-site AND off-site. Highest exposure.";
   };
 
+  # ── host mobility ─────────────────────────────────────────────────
+  #
+  # BEHAVIOURAL, NOT CHASSIS-BASED. A desktop you unplug and carry is
+  # `mobile`. A laptop bolted to a desk that never leaves it is
+  # `fixed`. Do not derive this from what the machine looks like — derive
+  # it from whether it changes networks.
+  #
+  # NOT THE SAME AXIS AS `portable`, and the two must not be blurred:
+  #
+  #   mobility  = does the HOST physically travel?      (network presence)
+  #   portable  = may the STATE be restored on another HOST?  (key re-wrap)
+  #
+  # They are orthogonal. A VM image can be `portable` while running on a
+  # NAS that never moves; a laptop that is never backed up anywhere is
+  # `mobile` but not `portable`.
+  mobilityType = types.enum [ "fixed" "mobile" ];
+
   # ── derived: how a tier's state is unlocked at boot ────────────────
   #
   # NOT independently settable. See the causal rule in the header: the
-  # tier's exposure determines the key depth.
+  # tier's exposure determines the key depth — and mobility determines
+  # whether that depth is even *reachable*, because a factor that lives
+  # somewhere is useless to a host that has left that somewhere.
   #
-  # `requires` names what must be reachable or present at unlock time —
-  # that list is the whole reason this table is worth reading before
-  # choosing a tier.
-  unlockFor = tier: {
-    machine = {
-      method          = "tpm2";
-      requires        = [ "this host's TPM2" ];
-      unattended      = true;
-      offsiteOpenable = false;   # no off-site copy exists
-    };
-    lan = {
-      method          = "tpm2";
-      requires        = [ "this host's TPM2" ];
-      unattended      = true;
-      offsiteOpenable = false;   # no off-site copy exists
-    };
-    global = {
-      method          = "tpm2+tang";
-      requires        = [ "this host's TPM2" "a reachable Tang server" ];
-      unattended      = true;
-      # The point of the whole table: an off-site copy of global-tier
-      # state cannot be opened off-LAN without the break-glass path.
+  # THE RULE THIS ENCODES:
+  #
+  #   For a host that moves, the second factor must be something you
+  #   CARRY or something you TYPE — never somewhere you ARE.
+  #
+  # Tang's entire security is that the oracle is somewhere the attacker
+  # is not. A mobile host cannot rely on that, because the thing it must
+  # prove (network presence) is evaluated in the initrd, before the OS
+  # can classify or choose its network — and every workaround that
+  # bridges that gap (overlay-in-initrd) makes the machine carry its own
+  # path to the oracle, which is not a factor at all.
+  #
+  # Note that the mobile branch is TIER-INDEPENDENT. On a mobile host the
+  # exposure is not scoped by tier: once the disk unlocks, everything on
+  # it is readable, not just the tier-tagged data. So mobility overrides
+  # the tier here rather than combining with it.
+  unlockFor = tier: mobility:
+    if mobility == "mobile" then {
+      method          = "tpm2+human";
+      factorClass     = "carried-or-typed";
+      tangAllowed     = false;
+      requires        = [ "this host's TPM2" "a FIDO2 key or passphrase" ];
+      unattended      = false;
       offsiteOpenable = false;
-    };
-  }.${tier};
+      note            = "Mobile host: Tang is excluded from the unlock path. A place cannot be a factor for a machine that leaves it.";
+    } else {
+      machine = {
+        method          = "tpm2";
+        factorClass     = "device";
+        tangAllowed     = false;
+        requires        = [ "this host's TPM2" ];
+        unattended      = true;
+        offsiteOpenable = false;   # no off-site copy exists
+      };
+      lan = {
+        method          = "tpm2";
+        factorClass     = "device";
+        tangAllowed     = false;
+        requires        = [ "this host's TPM2" ];
+        unattended      = true;
+        offsiteOpenable = false;   # no off-site copy exists
+      };
+      global = {
+        method          = "tpm2+tang";
+        factorClass     = "place";
+        tangAllowed     = true;
+        requires        = [ "this host's TPM2" "a reachable Tang server" ];
+        unattended      = true;
+        # The point of the whole table: an off-site copy of global-tier
+        # state cannot be opened off-LAN without the break-glass path.
+        offsiteOpenable = false;
+      };
+    }.${tier};
 
   # ── stated: what happens when the normal unlock path is gone ───────
   #
@@ -184,6 +231,25 @@ rec {
 
         ${(recoveryFor cfg.tier).detail}
       ''
+    else if cfg.mobility == "fixed" && cfg.tier == "global" && cfg.tangPlan == "" then
+      throw ''
+        mobility = "fixed" with tier = "global" requires `tangPlan` to name
+        the Tang deployment, because a single Tang server is a single point
+        of failure for EVERY off-site restore.
+
+        Tang is deliberately not a backup: it holds no client data, but
+        its own long-term keys are the only thing that can reconstitute
+        every binding made against them. Upstream's rotation procedure ends
+        with "only delete the old keys when you are sure that no client
+        require them anymore. You have been warned." Deleting them
+        destroys every still-bound disk, from anywhere, with no recovery
+        path.
+
+        Name the plan: how many Tang servers, in which failure domains,
+        and the SSS threshold. The minimum defensible answer is two
+        servers in separate failure domains, never on the same physical
+        medium as the data they protect, under a 1-of-2 threshold.
+      ''
     else
       true;
 
@@ -212,6 +278,35 @@ rec {
         type = tierType;
         description = ''
           Replication reach. The one free choice in this declaration.
+        '';
+      };
+
+      mobility = mkOption {
+        type = mobilityType;
+        default = "mobile";
+        description = ''
+          Whether the HOST physically changes networks. Behavioural, not
+          chassis-based: a desktop you unplug and carry is `mobile`; a
+          laptop bolted to a desk is `fixed`.
+
+          **Defaults to `mobile` — the safe default.** The two ways to
+          get this wrong fail very differently:
+
+          * A stationary host wrongly left `mobile` cannot use Tang, so
+            it demands a human factor at boot. That fails **loudly and
+            immediately** — you notice on the first boot.
+          * A travelling host wrongly set `fixed` gets a Tang-derived
+            unlock and **bricks the first time it boots somewhere the
+            oracle cannot be reached.** That fails **latently and far
+            from the mistake** — at a hotel, at 2 a.m.
+
+          So the default is chosen so that the likely error is the one
+          you find out about right away. Set `fixed` explicitly for NAS
+          boxes and servers that never move.
+
+          Orthogonal to {option}`portable`: that asks whether the STATE
+          may be restored on another host (a key re-wrap question); this
+          asks whether the HOST travels (a network-presence question).
         '';
       };
 
@@ -257,6 +352,24 @@ rec {
         '';
       };
 
+      tangPlan = mkOption {
+        type = types.str;
+        default = "";
+        example = "2 servers (home + VPS), separate failure domains, SSS 1-of-2, never on the protected medium";
+        description = ''
+          The Tang deployment backing a `global` tier on a host that never
+          moves.
+
+          Required (non-empty) when {option}`mobility` is `fixed` and
+          {option}`tier` is `global` — that combination silently depends
+          on a Tang server, and a single one is a single point of failure
+          for every off-site restore.
+
+          Not required for `mobile` hosts: mobility excludes Tang from
+          the unlock path entirely, so there is no oracle to plan.
+        '';
+      };
+
       # The guard itself. Internal, and forced by `resolve`.
       #
       # NOTE: this is only evaluated if something forces it. That is a
@@ -284,8 +397,8 @@ rec {
   # fields instead never triggers it.
   resolve = decl:
     builtins.seq decl._validated {
-      inherit (decl) tier portable rewrap recoveryReason;
-      unlock   = unlockFor decl.tier;
+      inherit (decl) tier mobility portable rewrap recoveryReason tangPlan;
+      unlock   = unlockFor decl.tier decl.mobility;
       recovery = recoveryFor decl.tier;
     };
 }
