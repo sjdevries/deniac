@@ -70,7 +70,7 @@ in
             name = "fastfetch";
             label = "den-fastfetch";
             stateVar = "SB";
-            stateDir = "/tmp/den-sandbox-fastfetch";
+            stateDirExpr = "/tmp/den-sandbox-fastfetch";
             homeSubdir = "home";
             command = "${pkgs.fastfetch}/bin/fastfetch";
             packages = [ pkgs.fastfetch ];
@@ -121,7 +121,7 @@ in
             label = "den-fastfetch-vm";
             what = "deniac.sandbox.fastfetch";
             stateVar = "SB";
-            stateDir = "/tmp/den-sandbox-fastfetch";
+            stateDirExpr = "/tmp/den-sandbox-fastfetch";
             homeSubdir = "home";
             munixPackage = pkgs.hello;
             closure = "/nix/store/fake-sandbox-toplevel";
@@ -164,7 +164,7 @@ in
             name = "greedy";
             label = "den-greedy";
             stateVar = "SB";
-            stateDir = "/tmp/den-sandbox-greedy";
+            stateDirExpr = "/tmp/den-sandbox-greedy";
             command = "fastfetch";
             packages = [ pkgs.fastfetch ];
             bindReadwrite = [ "/home/tux" ];
@@ -175,7 +175,7 @@ in
             name = "greedy";
             label = "den-greedy";
             stateVar = "SB";
-            stateDir = "/tmp/den-sandbox-greedy";
+            stateDirExpr = "/tmp/den-sandbox-greedy";
             command = "fastfetch";
             packages = [ pkgs.fastfetch ];
             bindReadwrite = [ "/home/tux" ];

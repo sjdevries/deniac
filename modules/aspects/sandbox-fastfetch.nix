@@ -77,7 +77,7 @@
       # here rather than left to a default. tmpfs means nothing persists,
       # which for a zero-state app is exactly right — and is the same
       # declaration a stateful sandbox member would make differently.
-      stateDir = "/tmp/den-sandbox-${cfg.name}";
+      stateDirExpr = "/tmp/den-sandbox-${cfg.name}";
 
       launcher =
         if cfg.enforcement == "bwrap" then
@@ -85,7 +85,7 @@
             name = cfg.name;
             label = "den-${cfg.name}";
             stateVar = "SB";
-            inherit stateDir;
+            inherit stateDirExpr;
             homeSubdir = "home";
             command = "${cfg.package}/bin/fastfetch";
             packages = [ cfg.package ];
@@ -101,7 +101,7 @@
             label = "den-${cfg.name}";
             what = "deniac.sandbox.fastfetch";
             stateVar = "SB";
-            inherit stateDir;
+            inherit stateDirExpr;
             homeSubdir = "home";
             munixPackage = cfg.munixPackage;
             closure = cfg.munixClosure;
