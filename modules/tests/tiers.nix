@@ -59,6 +59,66 @@
       }
     );
 
+    # ── the backend is FORCED by the network need, not chosen ────────
+    #
+    # Verified 2026-11-09 against the live `systemd-cryptenroll --help`
+    # in nixpkgs 26.11. It offers TPM2 (with PCR policy), FIDO2,
+    # PKCS#11, recovery key and password — and ZERO network-oracle
+    # support (0 matches for tang/oracle/network/remote/server). Tang is
+    # a clevis-only capability.
+    #
+    # So the systemd-native path does NOT replace clevis; it narrows it
+    # to the single cell of the table that needs a network oracle.
+    # `fixed` + `global` is the only clevis consumer.
+    #
+    # Pinned so a future refactor cannot silently move the global tier
+    # onto a backend that cannot express it — which would fail at the
+    # worst possible moment: in the initrd, away from home.
+    test-backend-is-forced-by-the-network-need = denTest (
+      { inputs, den, deniac, ... }:
+      let
+        t = import ../../lib/tiers.nix { lib = inputs.nixpkgs.lib; };
+        tiers = [ "machine" "lan" "global" ];
+      in
+      {
+        expr = {
+          # Everything that needs no network oracle is native systemd.
+          machineBackend = (t.unlockFor "machine" "fixed").backend;
+          lanBackend     = (t.unlockFor "lan" "fixed").backend;
+
+          # Mobile is tier-independent and never reaches clevis: mobility
+          # removes the oracle from the path entirely.
+          mobileBackends = map (x: (t.unlockFor x "mobile").backend) tiers;
+
+          # The single clevis cell in the whole table.
+          globalBackend = (t.unlockFor "global" "fixed").backend;
+          clevisCells   = builtins.filter
+            (x: (t.unlockFor x "fixed").backend == "clevis") tiers;
+
+          # The enroll hints name the tool that actually accepts them.
+          mobileEnrollIsFido2 =
+            builtins.match ".*--fido2-device=auto.*"
+              (t.unlockFor "global" "mobile").enroll != null;
+          globalEnrollIsClevis =
+            builtins.match "clevis luks bind.*"
+              (t.unlockFor "global" "fixed").enroll != null;
+        };
+        expected = {
+          machineBackend = "systemd-cryptenroll";
+          lanBackend     = "systemd-cryptenroll";
+          mobileBackends = [
+            "systemd-cryptenroll"
+            "systemd-cryptenroll"
+            "systemd-cryptenroll"
+          ];
+          globalBackend = "clevis";
+          clevisCells   = [ "global" ];
+          mobileEnrollIsFido2 = true;
+          globalEnrollIsClevis = true;
+        };
+      }
+    );
+
     # ── the recovery table is stated, not guessed ─────────────────────
     #
     # `lan` is TOTAL because the NAS copy is encrypted under the NAS's

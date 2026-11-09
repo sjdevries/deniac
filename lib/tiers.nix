@@ -112,9 +112,29 @@ rec {
   # exposure is not scoped by tier: once the disk unlocks, everything on
   # it is readable, not just the tier-tagged data. So mobility overrides
   # the tier here rather than combining with it.
+  #
+  # `backend` names WHICH TOOL implements the unlock, because the two
+  # available tools are not interchangeable (verified 2026-11-09 against
+  # the live `systemd-cryptenroll --help` in nixpkgs 26.11):
+  #
+  #   systemd-cryptenroll  TPM2 (with PCR policy), FIDO2, PKCS#11,
+  #                        recovery key, password. NO network oracle of
+  #                        any kind — zero matches for tang/oracle/
+  #                        network/remote/server in its help output.
+  #
+  #   clevis               tpm2 pin, tang pin, sss (threshold) pin.
+  #                        The ONLY way to get a network oracle.
+  #
+  # So clevis is NOT replaced by the systemd-native path — it is
+  # NARROWED to exactly the one case that needs a network oracle. Every
+  # non-`global` unlock is native systemd; `fixed` + `global` is the sole
+  # clevis consumer. That keeps the third-party dependency scoped to the
+  # single thing upstream cannot do.
   unlockFor = tier: mobility:
     if mobility == "mobile" then {
       method          = "tpm2+human";
+      backend         = "systemd-cryptenroll";
+      enroll          = "systemd-cryptenroll --tpm2-device=auto --fido2-device=auto $DEV";
       factorClass     = "carried-or-typed";
       tangAllowed     = false;
       requires        = [ "this host's TPM2" "a FIDO2 key or passphrase" ];
@@ -124,6 +144,8 @@ rec {
     } else {
       machine = {
         method          = "tpm2";
+        backend         = "systemd-cryptenroll";
+        enroll          = "systemd-cryptenroll --tpm2-device=auto $DEV";
         factorClass     = "device";
         tangAllowed     = false;
         requires        = [ "this host's TPM2" ];
@@ -132,6 +154,8 @@ rec {
       };
       lan = {
         method          = "tpm2";
+        backend         = "systemd-cryptenroll";
+        enroll          = "systemd-cryptenroll --tpm2-device=auto $DEV";
         factorClass     = "device";
         tangAllowed     = false;
         requires        = [ "this host's TPM2" ];
@@ -140,6 +164,11 @@ rec {
       };
       global = {
         method          = "tpm2+tang";
+        # The ONLY backend that can express a network oracle. If this
+        # ever moves to systemd it means upstream grew a Tang equivalent,
+        # which as of 2026-11-09 they have not.
+        backend         = "clevis";
+        enroll          = "clevis luks bind -d $DEV tpm2 '{}' tang '{\"tgp\":\"http://tang.lan:7654\"}'";
         factorClass     = "place";
         tangAllowed     = true;
         requires        = [ "this host's TPM2" "a reachable Tang server" ];
