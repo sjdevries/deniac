@@ -205,7 +205,7 @@ rec {
         # Emit an ungranted surface's deny flag only if no GRANTED
         # surface suppressed that same flag (grant precedence).
         toEmit = builtins.filter (f: !(builtins.elem f grantedReal))
-          (realFlags deniedFlags);
+          (lib.unique (realFlags deniedFlags));
       in
       lib.concatStringsSep " " (lib.sort (a: b: a < b) toEmit);
 
