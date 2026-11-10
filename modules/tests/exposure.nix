@@ -115,11 +115,11 @@
           # And the function signature itself carries no gpu parameter —
           # calling with one is an error, which is the structural proof.
           rejectsGpuArg =
-            builtins.tryEval (e.flagsFor {
+            (builtins.tryEval (e.flagsFor {
               backend = "munix";
               exposure = [ ];
               gpu = true;
-            }).success;
+            })).success;
         };
         expected = {
           closedDeniesWayland = true;
@@ -190,10 +190,10 @@
         expr = {
           # global + wayland, unacked => throws
           waylandUnacked =
-            builtins.tryEval (e.validateExposure {
+            (builtins.tryEval (e.validateExposure {
               tier = "global";
               exposure = [ "wayland" ];
-            }).success;
+            })).success;
 
           # global + wayland, acked => fine
           waylandAcked = e.validateExposure {
@@ -205,10 +205,10 @@
 
           # global + portals, unacked => throws
           portalsUnacked =
-            builtins.tryEval (e.validateExposure {
+            (builtins.tryEval (e.validateExposure {
               tier = "global";
               exposure = [ "portals" ];
-            }).success;
+            })).success;
 
           # global + audio only => allowed, audio is not an exfiltration
           # channel in this model
