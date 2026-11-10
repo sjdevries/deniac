@@ -139,6 +139,14 @@ rec {
       command = "hermes -p ${name}";
       network = prof.network or "full";
       gpu = prof.gpu or false;
+      # Forwarded, not defaulted here. The empty set is the safe value
+      # and compartment.nix is where its meaning lives — it emits an
+      # explicit deny flag per surface, because munix reads silence as
+      # "expose". Dropping this would make the axis unexpressible for a
+      # GPU-backed profile that legitimately needs a display.
+      exposure = prof.exposure or [ ];
+      tier = prof.tier or null;
+      exposureAck = prof.exposureAck or [ ];
       storeSlice = prof.storeSlice or null;
       guestEnv = c.secretEnvAssignments keySecret;
       bindReadonly = prof.bindReadonly or [ ];
