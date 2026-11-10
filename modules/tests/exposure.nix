@@ -112,23 +112,23 @@
           # still denies wayland.
           partialDeniesWayland = has "--no-wayland" partial;
 
-          # And the function signature itself carries no gpu parameter —
-          # calling with one is an error, which is the structural proof.
-          rejectsGpuArg =
-            (builtins.tryEval (e.flagsFor {
-              backend = "munix";
-              exposure = [ ];
-              gpu = true;
-            })).success;
+          # The structural proof: `flagsFor` takes exactly backend and
+          # exposure. There is NO gpu key in its parameter set, so there
+          # is no code path by which asking for graphics can reach the
+          # socket flags. Asserted on the signature rather than by
+          # catching a call error — `builtins.tryEval` does NOT catch
+          # "called with unexpected argument" (verified 2026-11-09), so
+          # the earlier version of this test could never have worked.
+          paramSet = builtins.functionArgs e.flagsFor;
         };
         expected = {
           closedDeniesWayland = true;
           closedDeniesPipewire = true;
           partialDeniesWayland = true;
-          # Unknown keys are rejected by the destructure, so this must be
-          # FALSE. If it ever becomes true, the axis has grown a graphics
-          # knob and the separation is gone.
-          rejectsGpuArg = false;
+          # If a `gpu` key ever appears here, the axis has grown a
+          # graphics knob and the separation this test exists to protect
+          # is gone.
+          paramSet = { backend = true; exposure = true; };
         };
       }
     );
@@ -163,7 +163,7 @@
       let
         e = import ../../lib/exposure.nix { lib = inputs.nixpkgs.lib; };
         f = e.flagsFor { backend = "munix"; exposure = [ ]; };
-        has = s: builtins.match (".*" + s + ".*") f != null;
+        has = s: hay: inputs.nixpkgs.lib.strings.hasInfix s hay;
       in
       {
         expr = {
@@ -322,7 +322,7 @@
       let
         e = import ../../lib/exposure.nix { lib = inputs.nixpkgs.lib; };
         d = e.describe { backend = "munix"; exposure = [ "audio" ]; };
-        has = s: builtins.match ("(?s).*" + s + ".*") d != null;
+        has = s: inputs.nixpkgs.lib.strings.hasInfix s d;
       in
       {
         expr = {
