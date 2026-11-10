@@ -303,8 +303,9 @@
 
           # And the coupling is documented, not just implied by the
           # shared flag, so a reader cannot miss it.
-            inputs.nixpkgs.lib.strings.hasInfix "cannot be denied independently" e.surfaceInfo.video.risk;
-              e.surfaceInfo.video.risk != null;
+          couplingDocumented =
+            inputs.nixpkgs.lib.strings.hasInfix "cannot be denied independently"
+              e.surfaceInfo.video.risk;
         };
         expected = {
           audioClearsPipewireDeny = true;
