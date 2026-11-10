@@ -42,6 +42,17 @@
 
 { lib }:
 rec {
+  # ── the reachability axis ───────────────────────────────────────────
+  #
+  # Imported here rather than threaded through every caller, so that
+  # `exposure` is authoritative in exactly one place. Every munix flag
+  # for a host surface comes out of this lib; nothing in this file
+  # hand-writes `--no-wayland` or `--no-pipewire` any more.
+  #
+  # See lib/exposure.nix for why reachability is a separate axis from
+  # tier (replication) and mobility (does the host travel).
+  exposureLib = import ./exposure.nix { inherit lib; };
+
   # ── store slice → munix flags ──────────────────────────────────────
   # Closure-only /nix/store for the guest. `null` keeps the whole-host store
   # bind (the unchanged default).
@@ -82,22 +93,51 @@ rec {
       '';
 
   # ── posture → munix virtualisation flags ────────────────────────────
+  #
+  # `gpu` controls GRAPHICS ONLY. `exposure` controls which host SURFACES
+  # the guest may reach. They are orthogonal, and `exposure` is
+  # authoritative for surfaces.
+  #
   # `network = "none"` maps to munix's clean no-net boundary.
   #
-  # A GPU-less profile is headless, and `--no-gpu` alone is NOT enough:
-  # munix still tries to bind the host Wayland socket, so on a headless host
-  # the run dies before the VM even starts with
-  #   bwrap: Can't find source path $XDG_RUNTIME_DIR/wayland-1
-  # Verified live 2026-10-30. Audio has the same problem via pipewire, so
-  # both are turned off together. This is a munix fact, not an app fact —
-  # which is exactly why it belongs here rather than in one aspect.
-  virtFlags = { network ? "full", gpu ? false }:
+  # WHAT CHANGED (2026-11-10). This previously read:
+  #
+  #     headlessFlags = if !gpu then "--no-wayland --no-pipewire" else "";
+  #
+  # That line made the exposure of the two most sensitive host surfaces a
+  # SIDE EFFECT of a crash workaround — munix dies on a headless host
+  # without them, verified live 2026-10-30 — and it failed in the bad
+  # direction: **asking for graphics silently granted the host compositor
+  # and the host audio daemon.** `gpu = true` meant "give me a display",
+  # and what it actually meant was "give me the keyboard, the clipboard,
+  # every window on the desktop, and the microphone."
+  #
+  # So the coupling is broken deliberately. `gpu` no longer implies any
+  # surface. A GPU-backed desktop app that wants the compositor says so:
+  #
+  #     gpu = true; exposure = [ "wayland" "audio" ];
+  #
+  # And a contained service says nothing, and gets nothing:
+  #
+  #     gpu = false; exposure = [ ];   # --no-gpu --no-wayland --no-pipewire
+  #
+  # The default case is byte-identical to the old `gpu = false` output, so
+  # every existing compartment is unaffected. Only `gpu = true` changes —
+  # and nothing in this fleet passes it.
+  #
+  # Note the direction of the default: `exposure = [ ]` is NOT silence.
+  # munix EXPOSES unless told otherwise, so the empty set emits an
+  # explicit deny flag per surface. Omission is not a safety property.
+  virtFlags = { network ? "full", gpu ? false, exposure ? [ ] }:
     let
       netFlag = if network == "none" then "--no-network" else "";
       gpuFlag = if !gpu then "--no-gpu" else "";
-      headlessFlags = if !gpu then "--no-wayland --no-pipewire" else "";
+      surfaceFlags = exposureLib.flagsFor {
+        backend = "munix";
+        inherit exposure;
+      };
     in
-    "${netFlag} ${gpuFlag} ${headlessFlags}";
+    "${netFlag} ${gpuFlag} ${surfaceFlags}";
 
   # ── bind safety: a home root is never a legal bind ──────────────────
   # DEFAULT-DENY is only worth what the allowlist costs to open by
@@ -449,6 +489,20 @@ rec {
     , allowUnsafeBinds ? [ ]
     , network ? "full"
     , gpu ? false
+    # Which host surfaces this compartment may reach. EMPTY BY DEFAULT, and
+    # the empty set is not silence — it emits an explicit deny flag per
+    # surface, because munix exposes unless told otherwise.
+    #
+    # `gpu` does NOT imply any member of this list. A GPU desktop app that
+    # wants the compositor declares `exposure = [ "wayland" "audio" ]`; a
+    # contained service declares nothing and reaches nothing.
+    , exposure ? [ ]
+    # The replication tier of the state this compartment holds, if known.
+    # Used only to check the compounding case below; null skips the check.
+    , tier ? null
+    # Surfaces the caller has deliberately accepted as exfiltration paths
+    # for `global`-tier state. Required to proceed, never defaulted on.
+    , exposureAck ? [ ]
     , storeSlice ? null
     , guestEnv ? ""
     , label ? "munix-${name}"
@@ -460,6 +514,24 @@ rec {
       stateEnvAssign =
         if stateEnvVar == null then ""
         else "${stateEnvVar}=\"${sRef}\" ";
+
+      # THE COMPOUNDING CASE, checked at eval so it cannot ship unnoticed.
+      # `global` tier means this state is replicated off-site; wayland and
+      # the doc portal are live channels OUT of the guest. Valuable data
+      # plus a path out is allowed, but only if someone named it.
+      #
+      # `validateExposure` either returns true or throws, so it only has
+      # to be FORCED — `builtins.seq` to WHNF is enough, since the throw
+      # is the whole else-branch. Skipped when `tier` is null: the
+      # compartment has not declared a replication class, so there is
+      # nothing to compound against.
+      _exposureChecked =
+        if tier == null then null
+        else builtins.seq (exposureLib.validateExposure {
+          inherit tier exposure;
+          ack = exposureAck;
+          context = what;
+        }) null;
     in
     pkgs.writeShellScriptBin label ''
       set -eu
@@ -472,7 +544,7 @@ rec {
       ${stateVar}=${stateDirExpr}
       mkdir -p "${sRef}/${homeSubdir}"
       exec ${munixPackage}/bin/munix \
-        ${virtFlags { inherit network gpu; }} \
+        ${virtFlags { inherit network gpu exposure; }} \
         ${storeSliceFlags what storeSlice} \
         --bind "${sRef}" "${sRef}" \
         ${munixBindFlags {

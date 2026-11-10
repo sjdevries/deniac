@@ -588,10 +588,12 @@ in
       }
     );
 
-    # ── munix: headless profiles disable wayland + pipewire ─────
+    # ── munix: a headless profile denies wayland + pipewire ───────
     # `--no-gpu` alone still leaves munix binding the host Wayland socket,
     # so a headless host fails pre-boot with
     #   bwrap: Can't find source path $XDG_RUNTIME_DIR/wayland-1
+    # This test covers the HEADLESS direction only. The gpu/exposure
+    # separation is its own test below, because they are different claims.
     test-munix-headless-flags = denTest (
       { inputs, den, deniac, ... }:
       let
@@ -614,24 +616,86 @@ in
         headless = builtins.readFile
           ((hj.mkMunixLauncher pkgs pkgs.hello "r1" (base // { gpu = false; }))
             + "/bin/hermes-munix-r1");
-        withGpu = builtins.readFile
-          ((hj.mkMunixLauncher pkgs pkgs.hello "r2" (base // { gpu = true; }))
-            + "/bin/hermes-munix-r2");
       in
       {
         expr = {
           headlessNoWayland = has "--no-wayland" headless;
           headlessNoPipewire = has "--no-pipewire" headless;
-          gpuProfileOmitsWaylandFlag = !(has "--no-wayland" withGpu);
-          gpuProfileOmitsPipewireFlag = !(has "--no-pipewire" withGpu);
-          gpuProfileOmitsNoGpu = !(has "--no-gpu" withGpu);
+          headlessNoGpu = has "--no-gpu" headless;
         };
         expected = {
           headlessNoWayland = true;
           headlessNoPipewire = true;
-          gpuProfileOmitsWaylandFlag = true;
-          gpuProfileOmitsPipewireFlag = true;
-          gpuProfileOmitsNoGpu = true;
+          headlessNoGpu = true;
+        };
+      }
+    );
+
+    # ── munix: gpu grants GRAPHICS, never a host surface ──────────
+    # This is the regression test for the coupling that `lib/exposure.nix`
+    # was written to break.
+    #
+    # The OLD behaviour — and the previous version of this very test
+    # asserted it — was that `gpu = true` OMITTED `--no-wayland` and
+    # `--no-pipewire`. In other words: asking for graphics silently
+    # granted the host compositor (every window, the clipboard, the
+    # keyboard) and the host audio daemon (microphone). A test that
+    # pinned that as expected behaviour is itself part of the bug, which
+    # is worth saying plainly: a green checkmark on the wrong assertion is
+    # worse than no check at all.
+    #
+    # Now `gpu` controls only `--no-gpu`. Surfaces come from `exposure`,
+    # default-empty, and the empty set EMITS the deny flags rather than
+    # staying silent — because upstream reads silence as "expose".
+    test-munix-gpu-does-not-grant-surfaces = denTest (
+      { inputs, den, deniac, ... }:
+      let
+        pkgs = import inputs.nixpkgs { system = "x86_64-linux"; };
+        hj = import ../../lib/hermes-jail.nix { inherit (pkgs) lib; };
+        base = {
+          enforcement = "munix";
+          bindReadonly = [ ];
+          bindReadwrite = [ ];
+          mcpServers = { };
+          settings = { };
+          soul = null;
+          network = "full";
+          munixPackage = pkgs.hello;
+          munixClosure = "/nix/store/fake-toplevel";
+          storeSlice = null;
+          extraPackages = [ ];
+          env = { };
+        };
+        read = name: attrs: builtins.readFile
+          ((hj.mkMunixLauncher pkgs pkgs.hello name attrs) + "/bin/hermes-munix-${name}");
+        gpuOnly = read "g1" (base // { gpu = true; });
+        gpuWithSurfaces = read "g2"
+          (base // { gpu = true; exposure = [ "wayland" "audio" ]; });
+        gpuWithWaylandOnly = read "g3" (base // { gpu = true; exposure = [ "wayland" ]; });
+      in
+      {
+        expr = {
+          # Graphics granted, surfaces still denied. THE separation.
+          gpuAloneStillDeniesWayland = has "--no-wayland" gpuOnly;
+          gpuAloneStillDeniesPipewire = has "--no-pipewire" gpuOnly;
+          gpuAloneOmitsNoGpu = !(has "--no-gpu" gpuOnly);
+
+          # An explicit grant turns the deny flags off — and only those.
+          explicitGrantOmitsWaylandFlag = !(has "--no-wayland" gpuWithSurfaces);
+          explicitGrantOmitsPipewireFlag = !(has "--no-pipewire" gpuWithSurfaces);
+
+          # Granting one surface does not leak into the other. Wayland
+          # granted, audio still denied: the two are independently named.
+          waylandGrantLeavesAudioDenied = has "--no-pipewire" gpuWithWaylandOnly
+            && !(has "--no-wayland" gpuWithWaylandOnly);
+        };
+        expected = {
+          gpuAloneStillDeniesWayland = true;
+          gpuAloneStillDeniesPipewire = true;
+          gpuAloneOmitsNoGpu = true;
+          explicitGrantOmitsWaylandFlag = true;
+          explicitGrantOmitsPipewireFlag = true;
+          waylandGrantLeavesAudioDenied = true;
         };
       }
     );
