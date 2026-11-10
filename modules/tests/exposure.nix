@@ -171,7 +171,8 @@
           # ...and the gap is still documented, so nobody mistakes the
           # absence for "handled".
           gapIsDocumented =
-            inputs.nixpkgs.lib.strings.hasInfix "NOT yet a real flag" e.surfaceInfo.portals.risk;
+            inputs.nixpkgs.lib.strings.hasInfix "ASPIRATIONAL"
+              e.surfaceInfo.portals.risk;
         };
         expected = {
           noFakeFlag = true;
