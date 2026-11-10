@@ -256,14 +256,18 @@
           allDeclaredDescribed = builtins.all
             (n: builtins.hasAttr n e.surfaceInfo) e.surfaces;
           count = builtins.length known;
-          # The enum is built FROM the list, so they cannot diverge.
-          enumMatchesList = e.surfaceType.types == e.surfaces;
+          # The enum is behavioural, not just a list that happens to
+          # match: it ACCEPTS every declared surface and REJECTS one that
+          # is not declared. That is what makes the set closed.
+          enumAcceptsAll = builtins.all (s: e.surfaceType.check s) e.surfaces;
+          enumRejectsUnknown = !(e.surfaceType.check "screencopy");
         };
         expected = {
           allKnownDeclared = true;
           allDeclaredDescribed = true;
           count = 4;
-          enumMatchesList = true;
+          enumAcceptsAll = true;
+          enumRejectsUnknown = true;
         };
       }
     );
