@@ -27,7 +27,7 @@
       let
         e = import ../../lib/exposure.nix { lib = inputs.nixpkgs.lib; };
         f = e.flagsFor { backend = "munix"; exposure = [ ]; };
-        has s = builtins.match (".*" + s + ".*") f != null;
+        has = s: builtins.match (".*" + s + ".*") f != null;
       in
       {
         expr = {
@@ -55,7 +55,7 @@
       { inputs, den, deniac, ... }:
       let
         e = import ../../lib/exposure.nix { lib = inputs.nixpkgs.lib; };
-        has s f = builtins.match (".*" + s + ".*") f != null;
+        has = s: f: builtins.match (".*" + s + ".*") f != null;
 
         audioOnly = e.flagsFor { backend = "munix"; exposure = [ "audio" ]; };
         waylandOnly = e.flagsFor { backend = "munix"; exposure = [ "wayland" ]; };
@@ -95,7 +95,7 @@
       { inputs, den, deniac, ... }:
       let
         e = import ../../lib/exposure.nix { lib = inputs.nixpkgs.lib; };
-        has s f = builtins.match (".*" + s + ".*") f != null;
+        has = s: f: builtins.match (".*" + s + ".*") f != null;
 
         # Same call the old code would have made with gpu = true.
         closed = e.flagsFor { backend = "munix"; exposure = [ ]; };
@@ -163,7 +163,7 @@
       let
         e = import ../../lib/exposure.nix { lib = inputs.nixpkgs.lib; };
         f = e.flagsFor { backend = "munix"; exposure = [ ]; };
-        has s = builtins.match (".*" + s + ".*") f != null;
+        has = s: builtins.match (".*" + s + ".*") f != null;
       in
       {
         expr = {
@@ -271,7 +271,7 @@
       let
         e = import ../../lib/exposure.nix { lib = inputs.nixpkgs.lib; };
         d = e.describe { backend = "munix"; exposure = [ "audio" ]; };
-        has s = builtins.match ("(?s).*" + s + ".*") d != null;
+        has = s: builtins.match ("(?s).*" + s + ".*") d != null;
       in
       {
         expr = {
