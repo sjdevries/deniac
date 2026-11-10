@@ -70,7 +70,12 @@ rec {
   # Deliberately a CLOSED enum. A surface that is not named here cannot be
   # granted, which means adding one is a deliberate act with a diff, not
   # a string someone typed.
-  surfaceType = lib.types.enum [ "audio" "video" "wayland" "portals" ];
+  #
+  # Declared as a list first so the enum and the description set are
+  # derived from ONE source. A test asserts they never drift.
+  surfaces = [ "audio" "video" "wayland" "portals" ];
+
+  surfaceType = lib.types.enum surfaces;
 
   # What each surface actually is, what it costs, and how it is denied.
   #
@@ -158,6 +163,19 @@ rec {
   # THE LOAD-BEARING RULE: every surface NOT in `exposure` emits its deny
   # flag. Silence means "expose" upstream, so silence is unsafe here.
   #
+  # GRANT PRECEDENCE. Two surfaces can share a deny flag — upstream
+  # carries camera access over the SAME PipeWire socket as audio, so
+  # `video` and `audio` both deny via `--no-pipewire`. The rule is:
+  #
+  #     a GRANTED surface suppresses its deny flag, even if another,
+  #     ungranted surface shares that flag.
+  #
+  # That is not a shortcut — it is the honest encoding of a real upstream
+  # limitation. **You cannot grant audio while denying video**, because
+  # they are one socket. Pretending otherwise would produce a launcher
+  # that claims a control it does not have. The coupling is stated in
+  # `surfaceInfo.video.risk` and pinned by a test.
+  #
   # `backend` is checked because this only applies to the VM path; a
   # bwrap compartment has no wayland/pipewire plumbing of its own and
   # would be handed meaningless flags.
@@ -169,17 +187,23 @@ rec {
       ""
     else
       let
-        # Surfaces that are neither granted nor deniable-by-flag are
-        # skipped rather than emitting a flag that does not exist.
-        deniable = lib.filterAttrs (
-          name: info:
-            !(builtins.elem name exposure)
-            && !(lib.strings.hasPrefix "--no-doc-portal" info.denyFlag)
-        ) surfaceInfo;
+        # Flags that granted surfaces turn OFF.
+        grantedFlags = map (s: surfaceInfo.${s}.denyFlag)
+          (builtins.filter (s: builtins.elem s surfaces) exposure);
 
-        flags = lib.mapAttrsToList (_: info: info.denyFlag) deniable;
+        # Flags that ungranted surfaces turn ON.
+        deniedFlags = map (s: surfaceInfo.${s}.denyFlag)
+          (builtins.filter (s: !(builtins.elem s exposure)) surfaces);
+
+        # Aspirational flags are recorded but never emitted: `portals` has
+        # no real munix flag yet (#37's fix lives in clan/sidebus, not
+        # the CLI). Emitting a flag munix would reject is worse than
+        # admitting the gap.
+        realFlags = fs: builtins.filter (f: !lib.strings.hasPrefix "--no-doc-portal" f) fs;
+
+        toEmit = lib.subtract (realFlags grantedFlags) (realFlags deniedFlags);
       in
-      lib.concatStringsSep " " (lib.sort (a: b: a < b) flags);
+      lib.concatStringsSep " " (lib.sort (a: b: a < b) toEmit);
 
   # ── the tier interaction ───────────────────────────────────────────
   #

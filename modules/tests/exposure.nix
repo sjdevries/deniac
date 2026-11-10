@@ -248,19 +248,66 @@
       in
       {
         expr = {
-          # Every known surface is in the enum, and the enum has no
-          # surface without an entry. A mismatch means someone added a
-          # name without describing its risk.
-          allKnownInEnum = builtins.all
-            (n: builtins.elem n e.surfaceType.types) known;
-          enumFullyDescribed = builtins.all
-            (n: builtins.hasAttr n e.surfaceInfo) e.surfaceType.types;
+          # Every described surface is in the declared list, and every
+          # declared surface has a description. A mismatch means someone
+          # added a name without describing its risk, or described a
+          # surface the enum will not accept.
+          allKnownDeclared = builtins.all (n: builtins.elem n e.surfaces) known;
+          allDeclaredDescribed = builtins.all
+            (n: builtins.hasAttr n e.surfaceInfo) e.surfaces;
           count = builtins.length known;
+          # The enum is built FROM the list, so they cannot diverge.
+          enumMatchesList = e.surfaceType.types == e.surfaces;
         };
         expected = {
-          allKnownInEnum = true;
-          enumFullyDescribed = true;
+          allKnownDeclared = true;
+          allDeclaredDescribed = true;
           count = 4;
+          enumMatchesList = true;
+        };
+      }
+    );
+
+    # ── the audio/video coupling is REAL, not a modelling slip ────────
+    #
+    # Upstream carries camera access over the SAME PipeWire socket as
+    # audio. There is no separate flag. So granting audio necessarily
+    # grants video, and this library must say so rather than pretend it
+    # can deny one while allowing the other.
+    #
+    # This test exists so that if someone "fixes" the coupling in the
+    # model without upstream actually separating the sockets, the test
+    # tells them the launcher would be lying.
+    test-audio-video-cannot-be-separated = denTest (
+      { inputs, den, deniac, ... }:
+      let
+        e = import ../../lib/exposure.nix { lib = inputs.nixpkgs.lib; };
+        has = s: f: builtins.match (".*" + s + ".*") f != null;
+
+        audioOnly = e.flagsFor { backend = "munix"; exposure = [ "audio" ]; };
+        videoOnly = e.flagsFor { backend = "munix"; exposure = [ "video" ]; };
+      in
+      {
+        expr = {
+          # Granting audio clears --no-pipewire, which means video is
+          # reachable too. There is no flag that would stop it.
+          audioClearsPipewireDeny = !(has "--no-pipewire" audioOnly);
+          videoClearsPipewireDeny = !(has "--no-pipewire" videoOnly);
+
+          # Both share the identical deny flag — the coupling, stated.
+          sameFlag = e.surfaceInfo.audio.denyFlag == e.surfaceInfo.video.denyFlag;
+
+          # And the coupling is documented, not just implied by the
+          # shared flag, so a reader cannot miss it.
+          couplingDocumented =
+            builtins.match ".*cannot be denied independently.*"
+              e.surfaceInfo.video.risk != null;
+        };
+        expected = {
+          audioClearsPipewireDeny = true;
+          videoClearsPipewireDeny = true;
+          sameFlag = true;
+          couplingDocumented = true;
         };
       }
     );
