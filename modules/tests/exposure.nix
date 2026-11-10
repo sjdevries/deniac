@@ -171,7 +171,7 @@
           # ...and the gap is still documented, so nobody mistakes the
           # absence for "handled".
           gapIsDocumented =
-            builtins.match ".*NOT yet a real flag.*" e.surfaceInfo.portals.risk != null;
+            inputs.nixpkgs.lib.strings.hasInfix "NOT yet a real flag" e.surfaceInfo.portals.risk;
         };
         expected = {
           noFakeFlag = true;
@@ -303,8 +303,7 @@
 
           # And the coupling is documented, not just implied by the
           # shared flag, so a reader cannot miss it.
-          couplingDocumented =
-            builtins.match ".*cannot be denied independently.*"
+            inputs.nixpkgs.lib.strings.hasInfix "cannot be denied independently" e.surfaceInfo.video.risk;
               e.surfaceInfo.video.risk != null;
         };
         expected = {
