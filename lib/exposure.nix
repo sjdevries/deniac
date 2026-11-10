@@ -201,7 +201,11 @@ rec {
         # admitting the gap.
         realFlags = fs: builtins.filter (f: !lib.strings.hasPrefix "--no-doc-portal" f) fs;
 
-        toEmit = lib.subtract (realFlags grantedFlags) (realFlags deniedFlags);
+        grantedReal = realFlags grantedFlags;
+        # Emit an ungranted surface's deny flag only if no GRANTED
+        # surface suppressed that same flag (grant precedence).
+        toEmit = builtins.filter (f: !(builtins.elem f grantedReal))
+          (realFlags deniedFlags);
       in
       lib.concatStringsSep " " (lib.sort (a: b: a < b) toEmit);
 
