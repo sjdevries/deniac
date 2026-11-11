@@ -163,6 +163,57 @@ Each profile (`profiles.<name>`):
 | `soul` | nullOr str | `null` | Persona rendered to `SOUL.md` (null = leave the agent's own) |
 | `network` | `"full"` \| `"none"` | `"full"` | munix egress posture (`none` → `--no-network`) |
 | `gpu` | bool | `false` | munix: pass GPU through |
+| `exposure` | [`"audio"` \| `"video"` \| `"wayland"` \| `"portals"`] | `[]` | **Which host surfaces the guest may reach.** Empty = DENIED, not unspecified — the launcher emits an explicit `--no-wayland --no-pipewire`. Orthogonal to `gpu`: graphics never implies audio. |
+| `exposureAck` | same enum | `[]` | Required to grant an exfiltrating surface (`wayland`, `portals`) on a compartment holding `global`-tier state. Without it the eval throws. |
+
+### `exposure` — the reachability axis
+
+`gpu` says whether the guest gets a GPU. `exposure` says which **host
+surfaces** the guest may reach. They are orthogonal, and `exposure` is
+authoritative: `gpu = true` does not grant wayland or audio, and
+`exposure = [ "wayland" ]` does not imply a GPU.
+
+The direction matters more than it looks. **munix exposes by default** —
+wayland and PipeWire are bound into the guest unless explicitly negated.
+So the empty set here is not silence: it emits the deny flags, and a
+reviewer reading the generated launcher can see the denial.
+
+Two couplings to know before reaching for it:
+
+- **You cannot grant `audio` while denying `video`.** Upstream carries
+  camera access over the *same* PipeWire socket, so granting either
+  suppresses the shared `--no-pipewire` flag. Pinned by a test rather
+  than left as a comment.
+- **`portals` has no real deny flag yet.** Upstream's fix lives in
+  `clan/sidebus`, not the launcher CLI. Naming it changes nothing;
+  omitting it cannot remove it either. Recorded in `lib/exposure.nix` so
+  the gap is explicit rather than silently missing.
+
+What each surface actually leaks is in `lib/exposure.nix:surfaceInfo`, and
+`lib.exposure.describe` renders it for a given config.
+
+```nix
+# A reviewer that must not see the desktop or the microphone.
+deniac.ai.hermes.profiles.reviewer = {
+  enforcement = "munix";
+  network = "none";
+  exposure = [ ];              # --no-wayland --no-pipewire, explicitly
+};
+
+# A creator profile that legitimately needs a display and audio.
+deniac.ai.hermes.profiles.creator = {
+  enforcement = "munix";
+  gpu = true;
+  exposure = [ "wayland" "audio" ];   # grants both; video comes along
+};
+
+# Global-tier state + a channel out = must be named.
+deniac.ai.hermes.profiles.reviewer = {
+  tier = "global";
+  exposure = [ "wayland" ];
+  exposureAck = [ "wayland" ];  # without this, eval throws
+};
+```
 | `munixPackage` | nullOr package | `null` | munix runner (consumer-provided; deniac doesn't pin libkrun/KVM) |
 | `munixClosure` | nullOr str | `null` | the NixOS toplevel the microVM boots |
 | `storeSlice.mode` | `"closure"` \| `"erofs"` | `"closure"` | how the restricted store is assembled — see `storeSlice` below |
