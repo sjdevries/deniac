@@ -220,7 +220,21 @@ rec {
   # the guest requires an explicit ack, in the same shape as
   # `allowUnsafeBinds` in compartment.nix. Not forbidden — acknowledged,
   # named, and visible in the diff.
-  exfiltratingSurfaces = [ "wayland" "portals" ];
+  #
+  # DERIVED, not listed. A surface is exfiltrating if and only if it
+  # declares an `exfiltrates` field in `surfaceInfo` above. This was
+  # previously hardcoded as `[ "wayland" "portals" ]` while `audio`
+  # ("microphone capture") and `video` ("camera capture") both declared
+  # themselves exfiltrating — so the microphone and the camera could be
+  # granted on global-tier state with no acknowledgement at all.
+  #
+  # That is the general defect: two sources describing one property, and
+  # they disagreed. The prose field was right and the enforcement list was
+  # wrong, which is the worst arrangement, because the prose reads as if
+  # the property were accounted for. Deriving removes the possibility of
+  # drift rather than merely documenting it.
+  exfiltratingSurfaces =
+    lib.attrNames (lib.filterAttrs (_: v: v ? exfiltrates) surfaceInfo);
 
   validateExposure =
     { tier ? null
@@ -234,16 +248,22 @@ rec {
         else builtins.filter (s: builtins.elem s exfiltratingSurfaces) exposure;
 
       unacked = builtins.filter (s: !(builtins.elem s ack)) offending;
+
+      # Rendered from the same `exfiltrates` field that DEFINES the
+      # surface as exfiltrating, so the error message cannot drift from
+      # the rule that produced it. A hardcoded sentence naming specific
+      # surfaces here went stale the moment the list widened.
+      detail = lib.concatStringsSep "\n"
+        (map (s: "  - ${s}: ${surfaceInfo.${s}.exfiltrates}") unacked);
     in
     if unacked == [ ] then true else
       throw ''
         ${context}: a compartment holding `global`-tier state declares
         exfiltrating exposure: ${lib.concatStringsSep ", " unacked}.
 
-        `global` means this state is replicated off-site. Wayland and the
-        document portal are channels that carry data OUT of the guest —
-        wayland exposes every host window, and the doc portal reuses the
-        host's document database across runs (upstream #36 / #37).
+        `global` means this state is replicated off-site. Each surface
+        named above is a channel that carries data OUT of the guest:
+        ${detail}
 
         That combination is the compounding case: valuable data, plus a
         live path out. It is allowed, but only if named.
