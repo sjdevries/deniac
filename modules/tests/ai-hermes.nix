@@ -700,6 +700,82 @@ in
       }
     );
 
+    # ── the exposure OPTION enforces the closed surface enum ─────────
+    # Everything above tests the LIBRARY. This tests that the aspect's
+    # DECLARED option actually carries that type. Without it,
+    # `exposure = [ "screencopy" ]` in a user's config would be accepted
+    # silently and the closed-enum guarantee -- "a surface not named here
+    # cannot be granted" -- would be fiction.
+    #
+    # Two Nix behaviours make this test non-obvious. Both are recorded
+    # because they will bite whoever edits it next:
+    #
+    #   1. `(types.listOf t).check [ bad ]` returns TRUE. `listOf.check`
+    #      does NOT delegate to the element type. A test built on `.check`
+    #      would pass against `listOf str` and prove nothing at all.
+    #
+    #   2. `builtins.tryEval` stops at WHNF. Forcing `config.x` yields a
+    #      list whose SPINE is fine while its elements are still unevaluated
+    #      errors, so tryEval reports SUCCESS on a definition the module
+    #      system has actually rejected. The forcing below uses
+    #      `concatStringsSep`, which touches every element, so the
+    #      rejection is genuinely observed rather than assumed.
+    #
+    # Verified against this nixpkgs: a real evalModules of a bad element
+    # throws "A definition for option ... is not of type `one of "a", "b"`",
+    # while `.check` on the same value returns true.
+    test-exposure-option-enums-the-surface-set = denTest (
+      { inputs, den, deniac, ... }:
+      let
+        pkgs = import inputs.nixpkgs { system = "x86_64-linux"; };
+        lib = pkgs.lib;
+        aspect = import ../../modules/aspects/ai-hermes.nix { inherit inputs lib; };
+        hm = aspect.deniac.ai.hermes.homeManager;
+        emptyCfg = { deniac.ai.hermes = { }; };
+        mod = hm { inherit lib emptyCfg; config = emptyCfg; pkgs = null; };
+        profilesType = mod.options.deniac.ai.hermes.profiles.type;
+
+        evalWith = exposureVal: lib.evalModules {
+          modules = [
+            ({ ... }: {
+              options.p = lib.mkOption {
+                type = profilesType;
+                default = { };
+              };
+            })
+            { p = { probe = { exposure = exposureVal; }; }; }
+          ];
+        };
+
+        # concatStringsSep forces EVERY element, not just the list spine.
+        forceExposure = ev: builtins.tryEval (
+          lib.concatStringsSep "," ev.config.p.probe.exposure
+        );
+
+        goodSingle = forceExposure (evalWith [ "wayland" ]);
+        goodPair = forceExposure (evalWith [ "wayland" "audio" ]);
+        goodEmpty = forceExposure (evalWith [ ]);
+        badUnknown = forceExposure (evalWith [ "screencopy" ]);
+        badOneInList = forceExposure (evalWith [ "wayland" "telepathy" ]);
+      in
+      {
+        expr = {
+          acceptsSingleSurface = goodSingle.success;
+          acceptsTwoSurfaces = goodPair.success;
+          acceptsEmptySet = goodEmpty.success;
+          rejectsUnknownSurface = !badUnknown.success;
+          rejectsUnknownAmongValid = !badOneInList.success;
+        };
+        expected = {
+          acceptsSingleSurface = true;
+          acceptsTwoSurfaces = true;
+          acceptsEmptySet = true;
+          rejectsUnknownSurface = true;
+          rejectsUnknownAmongValid = true;
+        };
+      }
+    );
+
     # ── declared config: provider inference for a custom base_url ────
     # hermes needs an explicit model.provider; a declared base_url alone
     # fails with ProviderNotConfiguredError. The inference must fill it in
