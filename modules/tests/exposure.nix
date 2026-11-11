@@ -211,11 +211,30 @@
               exposure = [ "portals" ];
             })).success;
 
-          # global + audio only => allowed, audio is not an exfiltration
-          # channel in this model
-          audioOnlyOk = e.validateExposure {
+          # global + audio, unacked => NOW throws.
+          #
+          # CORRECTION 2026-11-10. This assertion previously read
+          # `audioOnlyOk = true` under the comment "audio is not an
+          # exfiltration channel in this model". That belief was wrong,
+          # and worse than wrong: it was written down and then enforced,
+          # so the wrong model was load-bearing and cheap to defend.
+          # `surfaceInfo.audio.exfiltrates` says "microphone capture,
+          # and playback into the user's session". A microphone on a
+          # host holding off-site-replicated state is the compounding
+          # case the surrounding comment describes, not an exception to
+          # it. The list omission and this assertion were the same error
+          # in two places.
+          audioUnacked =
+            (builtins.tryEval (e.validateExposure {
+              tier = "global";
+              exposure = [ "audio" ];
+            })).success;
+
+          # ...and acking it is the way through, same as every surface.
+          audioAcked = e.validateExposure {
             tier = "global";
             exposure = [ "audio" ];
+            ack = [ "audio" ];
             context = "test";
           };
 
@@ -226,16 +245,22 @@
             context = "test";
           };
 
-          # and the guard is not vacuous — it fires on both surfaces
+          # and the guard is not vacuous — it fires on every surface
+          # that declares itself exfiltrating. This used to assert the
+          # literal [ "wayland" "portals" ], which is precisely how the
+          # drift hid: a test pinned the stale list, so widening the
+          # real one had to change the test too, and the test looked
+          # like it was describing the model rather than lagging it.
           exfilList = e.exfiltratingSurfaces;
         };
         expected = {
           waylandUnacked = false;
           waylandAcked = true;
           portalsUnacked = false;
-          audioOnlyOk = true;
+          audioUnacked = false;
+          audioAcked = true;
           lanWaylandOk = true;
-          exfilList = [ "wayland" "portals" ];
+          exfilList = [ "audio" "portals" "video" "wayland" ];
         };
       }
     );
