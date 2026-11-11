@@ -338,5 +338,79 @@
         };
       }
     );
+
+    # ── the exfiltration list cannot drift from the metadata ──────────
+    #
+    # REGRESSION TEST. `exfiltratingSurfaces` was hardcoded as
+    # [ "wayland" "portals" ] while `surfaceInfo` declared `audio`
+    # ("microphone capture") and `video` ("camera capture") as
+    # exfiltrating too. Both could be granted on global-tier state with
+    # no acknowledgement. The list is now DERIVED from the `exfiltrates`
+    # field, so the two cannot disagree.
+    #
+    # These assertions would all FAIL against the code this replaces,
+    # which is what makes them worth having.
+    test-exfiltrating-surfaces-are-derived-not-listed = denTest (
+      { inputs, den, deniac, ... }:
+      let
+        l = inputs.nixpkgs.lib;
+        e = import ../../lib/exposure.nix { lib = l; };
+        declared = l.attrNames (l.filterAttrs (_: v: v ? exfiltrates) e.surfaceInfo);
+      in
+      {
+        expr = {
+          # The list IS the set of surfaces that say they exfiltrate.
+          matchesMetadata =
+            declared == l.sort (a: b: a < b) e.exfiltratingSurfaces;
+
+          # The two that were silently missing.
+          audioIncluded = builtins.elem "audio" e.exfiltratingSurfaces;
+          videoIncluded = builtins.elem "video" e.exfiltratingSurfaces;
+
+          # Behaviour actually changed, not just the list. global + audio
+          # with no ack must now THROW. tryEval is safe here because
+          # validateExposure's throw IS the returned expression itself,
+          # not a lazily nested value -- forcing the bool forces the throw.
+          audioNowNeedsAck = ! (builtins.tryEval (e.validateExposure {
+            tier = "global";
+            exposure = [ "audio" ];
+            ack = [ ];
+            context = "drift-test";
+          })).success;
+
+          videoNowNeedsAck = ! (builtins.tryEval (e.validateExposure {
+            tier = "global";
+            exposure = [ "video" ];
+            ack = [ ];
+            context = "drift-test";
+          })).success;
+
+          # Acking satisfies it -- the gate is acknowledgement, not a ban.
+          audioAckedPasses = (builtins.tryEval (e.validateExposure {
+            tier = "global";
+            exposure = [ "audio" ];
+            ack = [ "audio" ];
+            context = "drift-test";
+          })).success;
+
+          # Non-global tiers are untouched by this rule.
+          lanTierStillQuiet = (builtins.tryEval (e.validateExposure {
+            tier = "lan";
+            exposure = [ "audio" "video" ];
+            ack = [ ];
+            context = "drift-test";
+          })).success;
+        };
+        expected = {
+          matchesMetadata = true;
+          audioIncluded = true;
+          videoIncluded = true;
+          audioNowNeedsAck = true;
+          videoNowNeedsAck = true;
+          audioAckedPasses = true;
+          lanTierStillQuiet = true;
+        };
+      }
+    );
   };
 }
