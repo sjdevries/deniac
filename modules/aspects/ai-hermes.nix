@@ -79,6 +79,11 @@
     { config, lib, pkgs, ... }:
     let
       hj = import ../../lib/hermes-jail.nix { inherit lib; };
+      # Imported for the SURFACE ENUM only, so the option type and the flag
+      # rendering cannot drift apart. `hj` forwards `exposure` to
+      # `compartment.nix`, which owns the meaning; this aspect owns nothing
+      # but the declaration that lets a user express it.
+      exposureLib = import ../../lib/exposure.nix { inherit lib; };
       cfg = config.deniac.ai.hermes;
 
       # ── profile submodule ──────────────────────────────────────────
@@ -176,6 +181,74 @@
             type = lib.types.bool;
             default = false;
             description = "munix: pass GPU through (omit `--no-gpu`). Off by default.";
+          };
+
+          # ── the reachability axis ──────────────────────────────────
+          #
+          # `gpu` says whether the guest gets a GPU. This says which HOST
+          # SURFACES the guest may reach. They are orthogonal, and this one
+          # is authoritative: `gpu = true` does NOT grant wayland or audio,
+          # and `exposure = [ "wayland" ]` does not imply a GPU.
+          #
+          # The direction matters more than it looks. munix exposes by
+          # default — wayland and PipeWire are bound into the guest unless
+          # you explicitly negate them. So the empty set here is NOT
+          # silence: it emits an explicit `--no-wayland --no-pipewire`.
+          # A reader of the generated launcher can see the denial.
+          exposure = lib.mkOption {
+            type = lib.types.listOf exposureLib.surfaceType;
+            default = [ ];
+            example = [ "wayland" "audio" ];
+            description = ''
+              Which host surfaces this compartment may reach. Empty by
+              default, and empty means DENIED, not unspecified: the
+              launcher emits an explicit deny flag for every surface not
+              named here, because munix reads silence as "expose".
+
+              Available surfaces: {option}`enforcement` aside, the set is
+              a closed enum — `audio`, `video`, `wayland`, `portals`.
+              Adding one is a deliberate change to `lib/exposure.nix`,
+              not a string typed into a config.
+
+              Two couplings worth knowing before you reach for this:
+
+              * **You cannot grant `audio` while denying `video`.**
+                Upstream carries camera access over the SAME PipeWire
+                socket, so granting either suppresses the shared
+                `--no-pipewire` flag. The coupling is pinned by a test
+                rather than left as a comment.
+
+              * **`portals` has no real deny flag yet.** Upstream's fix
+                lives in `clan/sidebus`, not the launcher CLI, so
+                naming it in `exposure` changes nothing and omitting it
+                cannot remove it either. Recorded in
+                `lib/exposure.nix` so the gap is explicit.
+
+              What each surface actually leaks is in
+              `lib/exposure.nix:surfaceInfo`, and
+              `lib.exposure.describe` renders it for a given config.
+            '';
+          };
+
+          exposureAck = lib.mkOption {
+            type = lib.types.listOf exposureLib.surfaceType;
+            default = [ ];
+            example = [ "wayland" ];
+            description = ''
+              Explicit acknowledgement for an exfiltrating surface on a
+              compartment that holds `global`-tier state.
+
+              `global` means the state is replicated off-site. Wayland and
+              the document portal are channels that carry data OUT of the
+              guest — wayland exposes every host window, and the doc portal
+              reuses the host's document database across runs. That
+              combination is the compounding case: valuable data plus a
+              live path out.
+
+              It is allowed, but only if named. Without the ack the eval
+              throws rather than letting the combination pass silently.
+              Same shape as `allowUnsafeBinds`.
+            '';
           };
 
           munixPackage = lib.mkOption {

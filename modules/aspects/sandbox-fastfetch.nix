@@ -112,6 +112,12 @@
             # flip, not a graphics one, and this aspect never takes it.
             network = "none";
             gpu = false;
+            # Stated explicitly rather than left to the default, so the
+            # floor's reachability is readable at the call site instead of
+            # inferred. Empty here means the launcher emits
+            # `--no-wayland --no-pipewire` — a deny that shows up in the
+            # generated script, not an absence.
+            exposure = [ ];
             storeSlice = cfg.storeSlice;
             bindReadonly = [ ];
             bindReadwrite = [ ];
