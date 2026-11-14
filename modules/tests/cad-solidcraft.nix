@@ -171,7 +171,13 @@
         };
         expected = {
           pname = "solidcraft";
-          version = "0.28.0";
+          # BUMP TRIPWIRE — this literal MUST be updated in the same commit
+          # that moves the `solidcraft` flake pin. It is not a real
+          # breakage when it goes red on a bump; it is the guard doing its
+          # job by proving the new pin actually took effect. Verified
+          # 2026-11-14: bumping 0.28.0 -> 0.41.0 failed exactly here and
+          # nowhere else (5/6 green), which is the intended signal.
+          version = "0.41.0";
           hasOutPath = true;
         };
       }
