@@ -44,15 +44,44 @@
       flake = false;
     };
     # SolidCraft — pure-Rust parametric 3D CAD (desktop + wasm + headless
-    # CLI + MCP server). Pinned to the EXACT commit reviewed on 2026-10-31
-    # (v0.28.0, `main`, 44d7c1fb): a clean-room Rust app on the truck
-    # B-rep kernel, MIT OR Apache-2.0, no GPL/LGPL, no telemetry,
-    # workspace `unsafe_code = "forbid"`, and its vendored truck patches
-    # verified against the upstream crates.io tarball.
+    # CLI + MCP server). Pinned to tag v0.41.0 (3c8efdb5, re-reviewed
+    # 2026-11-14): MIT OR Apache-2.0, no GPL/LGPL (0 hits across the
+    # lock), no telemetry, workspace `unsafe_code = "forbid"`.
+    #
+    # THE KERNEL CHANGED since our v0.28.0 pin. `truck` is gone (10 crates
+    # -> 0), replaced by `solidcore`: a safe-Rust B-rep kernel ported from
+    # NVIDIA's SMLib (NVIDIA-Omniverse/usd-brep v1.0.1 @ 3fd5b95,
+    # Apache-2.0, NVIDIA copyright carried, NOTICE + ATTRIBUTION.md
+    # present), vendored in-tree as a git subtree mirrored out to
+    # tangency-labs/solidcore. 1,840 .rs files with ZERO actual unsafe
+    # blocks and zero `unsafe fn`; the STEP Part21 parser carries
+    # `#![forbid(unsafe_code)]`, so the untrusted-input path cannot contain
+    # unsafe by construction. solidcore makes no network calls and its
+    # 56-package lock contains no network crates.
+    #
+    # NEW SURFACE: a WASM plugin runtime (wasmtime 48.0.8 + cranelift +
+    # cap-std). Sandbox verified IN CODE, not from its docs — no WASI
+    # linked; `fetch`/`wasi:sockets/`/`wasi:http/` refused by name; fuel +
+    # epoch interruption + resource limiter; `wasm_memory64(false)` and
+    # `wasm_multi_memory(false)`; execution hash-bound to the reviewed
+    # bytes; commands run on a scratch session under an empty file scope;
+    # and refused calls poison the transaction even if guest code catches
+    # the error and returns success. Not auto-loading: install needs an
+    # explicit .zip + consent after a dry-run review.
+    #
+    # wasmtime 48.0.8 is the EXACT patched version for RUSTSEC-2026-0422 /
+    # 0423 / 0424 (each requires >= 48.0.8). An earlier 48.0.x would have
+    # been exposed to all three, so this tag is the safe landing spot.
+    #
+    # Known-rough edges travel with the pin: upstream's own kernel regression
+    # rig reports ~321 of 372 cases passing on solidcore, 51 not passing
+    # (1 crash, 7 hangs), concentrated in booleans and sweeps. Complex
+    # boolean/sweep geometry may misbehave; ordinary modelling is fine.
+    #
     # This project moves at ~140 commits/day across 270+ contributors, so
     # the pin is the review boundary: re-run the safety review before
     # moving it. Consumed by the `cad.solidcraft` aspect.
-    solidcraft.url = "github:tangency-labs/solidcraft/44d7c1fb6f45b0c48f05f5730375c3071ff6dfea";
+    solidcraft.url = "github:tangency-labs/solidcraft/v0.41.0";
   };
 
   outputs = inputs: (
