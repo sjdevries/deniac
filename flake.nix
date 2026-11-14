@@ -2,7 +2,17 @@
   description = "deniac — den aspect library";
 
   inputs = {
-    den.url = "github:denful/den";
+    # Pinned to the v0.20.0 tag (released 2026-11-10, commit 9bdfbc21).
+    # The previous value was the bare branch URL, which resolved to
+    # 0f7675b0 (2026-10-21, "test: prefix suites by their categorization",
+    # den #737) — an UNRELEASED intermediate commit between v0.19.0
+    # (2026-09-24) and v0.20.0. A bare URL pin is worse than an old tag:
+    # it cannot be pointed at a release, and it silently means "whatever
+    # main was that day". Pinning the tag makes this reproducible and
+    # reviewable.
+    # Bumped alone, and re-verified per §3.1 (see the commit message for the
+    # suite results).
+    den.url = "github:denful/den/v0.20.0";
     import-tree.url = "github:vic/import-tree";
     nixpkgs.url = "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz";
     nix-amd-ai.url = "github:noamsto/nix-amd-ai";
