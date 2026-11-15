@@ -45,7 +45,9 @@
     # selectable --store-mode full|closure|erofs launcher plus the
     # micro-activate fix that relocates the /etc basedir into tmpfs when it
     # arrives as a virtiofs submount (closure mode), so the immutable /etc
-    # overlay mounts and systemctl works. Re-point to clan/munix once #38 merges.
+    # overlay mounts and systemctl works. Re-point to clan/munix once
+    # clan/munix PR #40 merges — munix PR #38 was closed as superseded;
+    # #40 is the live PR for this fork's store-mode work (2026-11-14 note).
     munix.url = "git+https://git.clan.lol/sjdevries/munix?shallow=1&ref=feat/store-mode";
     nixpkgs.follows = "munix/nixpkgs";
     # Follow upstream llm-agents.nix (its default branch) instead of a fixed

@@ -4,7 +4,10 @@
 #   agent asks  →  ~/tool-requests/coder.txt   (UNTRUSTED, raw)
 #   human reviews the PACKAGE (typosquat / CVE check — the request is
 #   itself a supply-chain vector) and promotes approved ones HERE.
-#   rebuild     →  nix build …#packages.x86_64-linux.coder-store-erofs
+#   rebuild     →  nix build …#packages.x86_64-linux.coder-store-paths
+#                  (closure mode since 2026-11-01 — the launcher binds the
+#                  closure path list; coder-store-erofs is the retired
+#                  erofs-image transport, kept only as a build target)
 #   restart     →  the coder VM boots the new slice with the tool.
 #
 # mkGuest reads this list, so the closure ONLY ever contains APPROVED
