@@ -86,7 +86,7 @@
     # This project moves at ~140 commits/day across 270+ contributors, so
     # the pin is the review boundary: re-run the safety review before
     # moving it. Consumed by the `cad.solidcraft` aspect.
-    solidcraft.url = "github:tangency-labs/solidcraft/v0.41.0";
+    solidcraft.url = "github:tangency-labs/solidcraft/v0.42.0";
   };
 
   outputs = inputs: (

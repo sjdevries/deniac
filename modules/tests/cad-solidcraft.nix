@@ -177,7 +177,9 @@
           # job by proving the new pin actually took effect. Verified
           # 2026-11-14: bumping 0.28.0 -> 0.41.0 failed exactly here and
           # nowhere else (5/6 green), which is the intended signal.
-          version = "0.41.0";
+          # 2026-11-15: bumping 0.41.0 -> 0.42.0 failed exactly here too
+          # (actual resolved to 0.42.0), same intended signal.
+          version = "0.42.0";
           hasOutPath = true;
         };
       }

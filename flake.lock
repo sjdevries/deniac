@@ -363,16 +363,16 @@
         "nixpkgs": "nixpkgs_5"
       },
       "locked": {
-        "lastModified": 1794534947,
-        "narHash": "sha256-YmvDHy3qTnA8iRtppJ/iDLjyKynnmjKwIYO+c4VdMes=",
+        "lastModified": 1794675316,
+        "narHash": "sha256-yUs/EBm8VC4p2ZLVRlEBd4OzZ6zXNGb84eGDX2AoO+s=",
         "owner": "tangency-labs",
         "repo": "solidcraft",
-        "rev": "3c8efdb51952ed9a5f3ebc722c2bad1454fe6d80",
+        "rev": "1b1e940cc48e4d1d5d01971a4be20e2e55647066",
         "type": "github"
       },
       "original": {
         "owner": "tangency-labs",
-        "ref": "v0.41.0",
+        "ref": "v0.42.0",
         "repo": "solidcraft",
         "type": "github"
       }
